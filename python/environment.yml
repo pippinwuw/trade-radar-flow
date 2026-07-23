@@ -1,0 +1,8 @@
+name: trade-radar-flow
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - beautifulsoup4>=4.12,<5
+  - requests>=2.31,<3

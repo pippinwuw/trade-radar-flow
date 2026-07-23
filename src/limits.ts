@@ -1,0 +1,2 @@
+export const DEFAULT_SEARCH_QUERIES = 3;
+export const MAX_RESULTS_PER_QUERY = 100;

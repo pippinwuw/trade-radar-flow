@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Trade Radar Flow 多国本地化搜索、买家资格审查与个性化触达工作台"
+    />
+    <title>Trade Radar Flow</title>
+    <script>
+      document.documentElement.dataset.theme =
+        localStorage.getItem("trade-radar-theme") === "dark" ? "dark" : "light";
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">
+        <span class="brand-mark">TR</span>
+        <span>
+          <strong>Trade Radar Flow</strong>
+          <small>Agent-assisted lead research</small>
+        </span>
+      </a>
+      <div class="topbar-actions">
+        <button
+          class="theme-toggle"
+          id="themeToggle"
+          type="button"
+          aria-pressed="false"
+        >
+          切换深色
+        </button>
+        <div class="mode-badge" id="modeBadge">正在连接</div>
+      </div>
+    </header>
+
+    <main>
+      <nav class="page-tabs" aria-label="主要功能">
+        <button class="page-tab active" data-page-target="workbenchPage">
+          获客工作台
+        </button>
+        <button class="page-tab" data-page-target="skillsPage">
+          Skill 管理
+        </button>
+      </nav>
+
+      <div class="page" id="workbenchPage">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">单用户外贸获客工作台</p>
+          <h1>把网站阅读和客户分析交给 Agent</h1>
+          <p class="hero-copy">
+            先与主 Agent 一起确认客户画像、关键词、排除条件和预算；人工批准后，
+            再由专业子 Agent 完成搜索、公司研究、资格复核和触达简报。
+          </p>
+        </div>
+        <div class="architecture">
+          <span>主 Agent</span><i></i><span>策略确认</span><i></i
+          ><span>公司研究</span><i></i
+          ><span>资格复核</span><i></i><span>触达简报</span>
+        </div>
+      </section>
+
+      <section class="orchestrator-shell">
+        <header class="orchestrator-header">
+          <div>
+            <p class="eyebrow">Campaign Orchestrator</p>
+            <h2>先讨论，再确认，再执行</h2>
+          </div>
+          <div class="orchestrator-header-actions">
+            <label class="session-picker" for="orchestratorSessionSelect">
+              <span>历史会话</span>
+              <select id="orchestratorSessionSelect" disabled>
+                <option value="">暂无已保存会话</option>
+              </select>
+            </label>
+            <span class="status-pill" id="orchestratorStatus">尚未开始</span>
+            <button class="button secondary" id="newOrchestratorButton">
+              新建主 Agent 会话
+            </button>
+          </div>
+        </header>
+        <div class="orchestrator-grid">
+          <section class="agent-chat-panel">
+            <div class="agent-messages" id="agentMessages">
+              <div class="empty-chat">
+                新建会话后，主 Agent 会加载基础策略模板，并引导你确认下一步。
+              </div>
+            </div>
+            <form class="agent-composer" id="agentComposer">
+              <textarea
+                id="agentMessageInput"
+                placeholder="例如：优先寻找有进口能力的篷布批发商，排除零售店……"
+                disabled
+              ></textarea>
+              <button class="button primary" id="sendAgentMessageButton" disabled>
+                发送给主 Agent
+              </button>
+            </form>
+          </section>
+
+          <aside class="strategy-card">
+            <div class="strategy-card-header">
+              <div>
+                <p class="eyebrow">可编辑策略模板</p>
+                <h3>搜索与分析方案</h3>
+              </div>
+              <span id="strategyVersion">v -</span>
+            </div>
+            <div id="strategyEmpty" class="empty-strategy">
+              创建会话后将在这里显示基础模板。
+            </div>
+            <form class="strategy-form hidden" id="strategyForm">
+              <label>任务目标<textarea id="strategyObjective"></textarea></label>
+              <label>目标客户角色<input id="strategyRoles" /></label>
+              <label>行业 / 用途<input id="strategyIndustries" /></label>
+              <label>核心关键词<input id="strategyKeywords" /></label>
+              <label>同义词 / 补充词<input id="strategyAlternatives" /></label>
+              <label>当地语言关键词<input id="strategyLocalKeywords" /></label>
+              <label>重点城市<input id="strategyCities" /></label>
+              <label>排除词<input id="strategyExclusions" /></label>
+              <label>排除域名<input id="strategyDomains" /></label>
+              <div class="budget-grid">
+                <label>查询数<input id="strategyMaxQueries" type="number" min="1" /></label>
+                <label>每条结果<input id="strategyResultsPerQuery" type="number" min="100" max="100" readonly /></label>
+                <label>每站页面数<input id="strategyMaxPages" type="number" min="1" /></label>
+                <label>国家阈值<input id="strategyCountryScore" type="number" min="0" max="100" /></label>
+                <label>低新增域名数<input id="strategyLowYieldDomains" type="number" min="0" /></label>
+                <label>低新增率<input id="strategyLowYieldRate" type="number" min="0" max="1" step="0.01" /></label>
+                <label>连续低新增轮数<input id="strategyLowYieldRounds" type="number" min="1" /></label>
+              </div>
+              <div class="custom-strategy-sections" id="customStrategySections"></div>
+              <div class="strategy-budget" id="strategyBudget"></div>
+              <div class="strategy-actions">
+                <button class="button secondary" type="button" id="saveStrategyButton">
+                  保存模板修改
+                </button>
+                <button class="button primary" type="button" id="approveStrategyButton">
+                  确认策略
+                </button>
+                <button class="button primary hidden" type="button" id="executeStrategyButton">
+                  开始执行
+                </button>
+              </div>
+            </form>
+          </aside>
+        </div>
+        <section class="orchestrator-progress hidden" id="orchestratorProgress" aria-live="polite">
+          <div class="spinner"></div>
+          <div>
+            <strong id="orchestratorProgressTitle">正在执行已确认策略</strong>
+            <p id="orchestratorProgressText"></p>
+            <div class="round-progress" id="orchestratorRoundProgress"></div>
+          </div>
+        </section>
+        <section class="orchestrator-report hidden" id="orchestratorReport"></section>
+      </section>
+
+      <details class="quick-mode">
+        <summary>快速工具：跳过策略协作，直接搜索、分析单一官网或运行离线验证样例</summary>
+      <section class="launch-panel">
+        <div class="field">
+          <label for="product">目标产品</label>
+          <input id="product" value="industrial fabrics" />
+        </div>
+        <div class="field">
+          <label for="country">目标国家</label>
+          <input id="country" list="countryOptions" value="United Arab Emirates" />
+          <datalist id="countryOptions">
+            <option value="United Arab Emirates">阿联酋</option>
+            <option value="Saudi Arabia">沙特阿拉伯</option>
+          </datalist>
+        </div>
+        <div class="field">
+          <label for="language">首选语言</label>
+          <select id="language">
+            <option>English</option>
+            <option>Arabic</option>
+            <option>Spanish</option>
+            <option>German</option>
+          </select>
+        </div>
+        <div class="launch-actions">
+          <button class="button primary" id="runSearchButton">
+            真实搜索并分析
+          </button>
+          <button class="button primary" id="runDemoButton">
+            运行离线验证样例
+          </button>
+        </div>
+        <div class="url-row">
+          <div class="field grow">
+            <label for="companyUrl">或分析一个公开公司官网</label>
+            <input
+              id="companyUrl"
+              type="url"
+              placeholder="https://company.example"
+            />
+          </div>
+          <button class="button secondary" id="analyzeButton">
+            抓取并分析
+          </button>
+        </div>
+        <label class="regex-cleaning-toggle" for="enableRegexCleaning">
+          <input id="enableRegexCleaning" type="checkbox" checked />
+          启用正则去噪（关闭后仅进行基础 DOM 清理）
+        </label>
+        <p class="form-note">
+          直接搜索使用系统默认查询预算；主 Agent 模式可先确认完整查询矩阵和停止阈值。
+          离线验证样例不调用 Serper 或外部模型。
+        </p>
+      </section>
+      </details>
+
+      <section class="run-status hidden" id="runStatus" aria-live="polite">
+        <div class="spinner"></div>
+        <div>
+          <strong id="runStatusTitle">正在运行 Agent 流水线</strong>
+          <p id="runStatusText">准备候选公司与网页证据...</p>
+        </div>
+      </section>
+
+      <section class="workspace hidden" id="workspace">
+        <aside class="lead-column">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">黄金买家队列</p>
+              <h2 id="campaignTitle">分析结果</h2>
+            </div>
+            <div class="section-heading-actions">
+              <button
+                class="button secondary compact"
+                id="exportJsonButton"
+                type="button"
+                disabled
+              >
+                导出 JSON
+              </button>
+              <button
+                class="button secondary compact"
+                id="exportXlsxButton"
+                type="button"
+                disabled
+              >
+                导出 XLSX
+              </button>
+              <span class="count" id="leadCount">0</span>
+            </div>
+          </div>
+          <div class="summary-strip" id="summaryStrip"></div>
+          <div class="lead-list" id="leadList"></div>
+        </aside>
+
+        <article class="detail-column" id="leadDetail">
+          <div class="empty-detail">
+            <p>选择一家公司查看 Agent 简报与触达草稿。</p>
+          </div>
+        </article>
+      </section>
+      </div>
+
+      <section class="page hidden skill-page" id="skillsPage">
+        <header class="skill-page-header">
+          <div>
+            <p class="eyebrow">pi Agent 运行时知识</p>
+            <h1>Country Skill 管理</h1>
+            <p>
+              查看当前国家搜索与验证规则。AI 只能生成提案，修正并批准后才会写入运行时 Skill。
+            </p>
+          </div>
+          <button class="button primary" id="generateSkillProposalButton">
+            根据当前任务生成提案
+          </button>
+        </header>
+        <p class="skill-message" id="skillMessage" aria-live="polite"></p>
+        <div class="skill-grid" id="skillCards"></div>
+        <section class="proposal-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">人工审批队列</p>
+              <h2>Skill 更新提案</h2>
+            </div>
+            <button class="button secondary" id="refreshSkillsButton">
+              刷新
+            </button>
+          </div>
+          <div id="proposalList"></div>
+        </section>
+      </section>
+    </main>
+
+    <template id="leadItemTemplate">
+      <button class="lead-item">
+        <div class="lead-item-top">
+          <strong data-field="name"></strong>
+          <span class="status-pill" data-field="status"></span>
+        </div>
+        <p data-field="role"></p>
+        <div class="score-row">
+          <span>匹配 <b data-field="fit"></b></span>
+          <span>规模 <b data-field="scale"></b></span>
+          <span>置信 <b data-field="confidence"></b></span>
+        </div>
+      </button>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
