@@ -21,7 +21,16 @@ output/
 !output/.gitkeep
 workspace/
 !workspace/.gitkeep
+
+# Local docs, customer templates, and filled spreadsheets
 doc/*.pdf
+doc/target/
+doc/**/*.xls
+doc/**/*.xlsx
+*.xls
+*.xlsx
+!**/fixtures/**/*.xls
+!**/fixtures/**/*.xlsx
 
 # Python
 __pycache__/

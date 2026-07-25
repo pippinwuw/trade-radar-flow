@@ -202,6 +202,10 @@ conda.exe run -n trade-radar-flow python -m unittest tests.test_crawler_worker
 提交代码前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 和
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
 
+## 作者言
+
+这个仓库的来源是朋友的需求，毕竟写完了，就贡献给大家，希望能帮助省出工作的时间留给自己。作者建议直接让Agent辅助帮你跑这个代码，其次可以使用我们提供的前端Agent。
+
 ## License
 
 [MIT](LICENSE)
