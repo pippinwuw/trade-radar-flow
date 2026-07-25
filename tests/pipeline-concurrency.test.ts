@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CampaignAgentContext } from "../src/agent-runtime.js";
-import { DemoAgentRuntime } from "../src/demo-agent-runtime.js";
-import { demoCandidates } from "../src/demo-data.js";
+import type { CampaignAgentContext } from "../src/agents/agent-runtime.js";
+import { DemoAgentRuntime } from "../src/agents/demo-agent-runtime.js";
+import { demoCandidates } from "../src/agents/demo-data.js";
 import type { CompanyCandidate } from "../src/domain.js";
 import {
   DEFAULT_COMPANY_ANALYSIS_ACTIVE_LIMIT,

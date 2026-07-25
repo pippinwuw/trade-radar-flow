@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { DemoAgentRuntime } from "../src/demo-agent-runtime.js";
+import { DemoAgentRuntime } from "../src/agents/demo-agent-runtime.js";
 import type {
   CampaignResult,
   OrchestratorSessionStatus,

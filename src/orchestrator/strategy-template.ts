@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { requireCountry } from "../countries/registry.js";
+import { requireCountry } from "../market/registry.js";
 import type {
   BusinessRole,
   CampaignInput,
@@ -8,11 +8,11 @@ import type {
 import {
   getApprovedMarketPolicy,
   marketPolicyRef,
-} from "../market-policy.js";
+} from "../market/policy.js";
 import {
   DEFAULT_SEARCH_QUERIES,
   MAX_RESULTS_PER_QUERY,
-} from "../limits.js";
+} from "../lib/limits.js";
 
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);

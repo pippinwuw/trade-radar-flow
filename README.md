@@ -30,11 +30,14 @@ src/server.ts
    ├── src/orchestrator/       会话、策略、审批、执行与报告
    ├── src/discovery/          查询规划、Serper、去重与停止条件
    ├── src/pipeline.ts         抓取、公司分析、检查点
-   ├── src/pi-agent-runtime.ts pi Agent 工具与结构化提交
+   ├── src/agents/             Agent runtime、demo 与生产 prompts
+   ├── src/crawler/            Python 爬虫 JSONL 客户端与缓存边界
+   ├── src/market/             CountryProfile 与 MarketPolicy
+   ├── src/analysis/           公司证据包与上下文编译
    ├── src/validation/         国家、联系人和证据校验
    ├── src/storage/            SQLite 持久化与缓存
+   ├── src/export/             JSON/XLSX 通用导出
    ├── market-policies/        内置外部 MarketPolicy JSON
-   ├── src/campaign-export.ts  JSON/XLSX 通用导出
    └── python/crawler_worker.py
 ```
 

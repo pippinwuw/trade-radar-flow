@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto";
-import type { CampaignAgentContext } from "./agent-runtime.js";
+import type { CampaignAgentContext } from "../agents/agent-runtime.js";
 import type {
   CompanyCandidate,
   ContactValidation,
   LeadRecord,
-} from "./domain.js";
-import { getDatabase } from "./storage/database.js";
+} from "../domain.js";
+import { getDatabase } from "../storage/database.js";
 import {
   buildContactCatalog,
   buildEvidenceCatalog,
   type ContactReference,
   type EvidenceSnippet,
-} from "./validation/company-analysis-validator.js";
+} from "../validation/company-analysis-validator.js";
 
 export const COMPANY_ANALYSIS_CONTRACT_VERSION = "company-analysis-v2";
 

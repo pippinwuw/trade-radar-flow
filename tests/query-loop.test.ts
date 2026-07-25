@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import type { CampaignAgentContext } from "../src/agent-runtime.js";
-import type { crawlCandidate } from "../src/crawler.js";
-import { DemoAgentRuntime } from "../src/demo-agent-runtime.js";
-import { demoCandidates } from "../src/demo-data.js";
+import type { CampaignAgentContext } from "../src/agents/agent-runtime.js";
+import type { crawlCandidate } from "../src/crawler/index.js";
+import { DemoAgentRuntime } from "../src/agents/demo-agent-runtime.js";
+import { demoCandidates } from "../src/agents/demo-data.js";
 import {
   appendBrandFingerprints,
   buildEffectiveSearchQuery,

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCompanyContext } from "../src/company-context.js";
-import { compileContext } from "../src/context-manager.js";
-import { demoCandidates } from "../src/demo-data.js";
+import { buildCompanyContext } from "../src/analysis/company-context.js";
+import { compileContext } from "../src/analysis/context-manager.js";
+import { demoCandidates } from "../src/agents/demo-data.js";
 import { buildCampaignAgentContext } from "../src/discovery/query-planner.js";
 import { createDefaultStrategy } from "../src/orchestrator/strategy-template.js";
 import { AppDatabase } from "../src/storage/database.js";

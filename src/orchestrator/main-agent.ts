@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import type { AgentRuntime } from "../agent-runtime.js";
+import type { AgentRuntime } from "../agents/agent-runtime.js";
 import { buildCampaignAgentContext } from "../discovery/query-planner.js";
 import type {
   BusinessRole,
@@ -22,21 +22,21 @@ import { logger } from "../logging/logger.js";
 import {
   OperationTimeoutError,
   positiveIntegerFromEnv,
-} from "../concurrency.js";
+} from "../lib/concurrency.js";
 import {
   CAMPAIGN_REPORT_SYSTEM_PROMPT,
   GLOBAL_BUSINESS_SYSTEM_PROMPT,
   ORCHESTRATOR_SYSTEM_PROMPT,
-} from "../production-prompts.js";
-import { listCountryProfiles } from "../countries/registry.js";
-import type { RuntimeMarketCountryInput } from "../countries/runtime-market.js";
+} from "../agents/production-prompts.js";
+import { listCountryProfiles } from "../market/registry.js";
+import type { RuntimeMarketCountryInput } from "../market/runtime-market.js";
 import {
   compileContext,
   marketPolicyProjection,
   estimateTokens,
   readUsageFromMessages,
   type ContextEnvelope,
-} from "../context-manager.js";
+} from "../analysis/context-manager.js";
 
 interface StrategyPatch {
   product?: string;

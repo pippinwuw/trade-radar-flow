@@ -7,7 +7,7 @@ import type {
   CountryProfile,
   MarketPolicy,
   SearchPlan,
-} from "./domain.js";
+} from "../domain.js";
 
 export interface AgentResult<T> {
   value: T;

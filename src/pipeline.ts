@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { AgentRuntime } from "./agent-runtime.js";
-import type { CampaignAgentContext } from "./agent-runtime.js";
-import { requireCountry } from "./countries/registry.js";
-import { getApprovedMarketPolicy, marketPolicyRef } from "./market-policy.js";
-import { crawlCandidate } from "./crawler.js";
-import { DemoAgentRuntime } from "./demo-agent-runtime.js";
-import { demoCandidates } from "./demo-data.js";
+import type { AgentRuntime } from "./agents/agent-runtime.js";
+import type { CampaignAgentContext } from "./agents/agent-runtime.js";
+import { requireCountry } from "./market/registry.js";
+import { getApprovedMarketPolicy, marketPolicyRef } from "./market/policy.js";
+import { crawlCandidate } from "./crawler/index.js";
+import { DemoAgentRuntime } from "./agents/demo-agent-runtime.js";
+import { demoCandidates } from "./agents/demo-data.js";
 import {
   createDiscoveryProgress,
   discoverCompanies,
@@ -22,7 +22,7 @@ import {
   mapWithConcurrency,
   positiveIntegerFromEnv,
   withRetry,
-} from "./concurrency.js";
+} from "./lib/concurrency.js";
 import type {
   CampaignInput,
   CompanyAnalysisFailure,
@@ -36,7 +36,7 @@ import type {
   OrchestratorRunPhase,
   SearchPlan,
 } from "./domain.js";
-import { PiAgentRuntime } from "./pi-agent-runtime.js";
+import { PiAgentRuntime } from "./agents/pi-agent-runtime.js";
 import { getDatabase } from "./storage/database.js";
 import { logger, runWithLogContext } from "./logging/logger.js";
 import { validateContactCandidates } from "./validation/contact-validator.js";

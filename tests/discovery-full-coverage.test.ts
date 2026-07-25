@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DemoAgentRuntime } from "../src/demo-agent-runtime.js";
+import { DemoAgentRuntime } from "../src/agents/demo-agent-runtime.js";
 import {
   discoverCompanies,
   isExcludedSearchHit,

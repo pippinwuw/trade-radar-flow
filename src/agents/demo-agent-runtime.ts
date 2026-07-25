@@ -17,10 +17,10 @@ import type {
   QualificationDecision,
   ResolvedContact,
   SearchPlan,
-} from "./domain.js";
+} from "../domain.js";
 import {
   DEFAULT_SEARCH_QUERIES,
-} from "./limits.js";
+} from "../lib/limits.js";
 
 const PRODUCT_TERMS = [
   "tarpaulin",

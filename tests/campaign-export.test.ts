@@ -6,7 +6,7 @@ import {
   campaignExportFilename,
   projectCampaignExport,
   serializeCampaignJson,
-} from "../src/campaign-export.js";
+} from "../src/export/campaign-export.js";
 import type { CampaignResult, LeadRecord } from "../src/domain.js";
 
 function asArrayBuffer(buffer: Buffer): ArrayBuffer {

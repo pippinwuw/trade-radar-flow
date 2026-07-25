@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { requireCountry } from "../src/countries/registry.js";
+import { requireCountry } from "../src/market/registry.js";
 import type { CompanyCandidate } from "../src/domain.js";
 import { validateContactCandidates } from "../src/validation/contact-validator.js";
 import { validateCompanyCountry } from "../src/validation/country-validator.js";

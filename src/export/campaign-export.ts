@@ -3,7 +3,7 @@ import type {
   CampaignResult,
   ContactValidation,
   LeadStatus,
-} from "./domain.js";
+} from "../domain.js";
 
 export const CAMPAIGN_EXPORT_SCHEMA_VERSION = 1 as const;
 

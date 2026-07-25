@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   crawlCandidate,
   crawlerCacheKey,
-} from "../src/crawler.js";
+} from "../src/crawler/index.js";
 import type { CompanyCandidate, SearchHit } from "../src/domain.js";
 import { getDatabase } from "../src/storage/database.js";
 

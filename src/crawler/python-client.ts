@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import readline from "node:readline";
-import type { CompanyCandidate, SearchHit } from "./domain.js";
+import type { CompanyCandidate, SearchHit } from "../domain.js";
 import {
   getLogContext,
   logger,
   type LogContext,
-} from "./logging/logger.js";
+} from "../logging/logger.js";
 
 interface WorkerResponse {
   id: string;

@@ -1,14 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { getDomain } from "tldts";
-import type { CompanyCandidate, SearchHit } from "./domain.js";
+import type { CompanyCandidate, SearchHit } from "../domain.js";
 import {
   getPythonCrawler,
   type CrawlerOptions,
-} from "./python-crawler-client.js";
-import { logger } from "./logging/logger.js";
-import { getDatabase } from "./storage/database.js";
+} from "./python-client.js";
+import { logger } from "../logging/logger.js";
+import { getDatabase } from "../storage/database.js";
 
-export type { CrawlerOptions } from "./python-crawler-client.js";
+export type { CrawlerOptions } from "./python-client.js";
 
 const inFlightCrawls = new Map<string, Promise<CompanyCandidate>>();
 

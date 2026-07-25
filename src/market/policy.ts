@@ -15,8 +15,8 @@ import type {
   MarketPolicy,
   MarketPolicyRecord,
   MarketPolicyRef,
-} from "./domain.js";
-import { getDatabase } from "./storage/database.js";
+} from "../domain.js";
+import { getDatabase } from "../storage/database.js";
 
 const BUILTIN_CREATED_AT = "2026-01-01T00:00:00.000Z";
 const LEGACY_MIGRATION_ID = "country-context-json-to-market-policy-files-v1";

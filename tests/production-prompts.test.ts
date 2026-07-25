@@ -6,7 +6,7 @@ import {
   GLOBAL_BUSINESS_SYSTEM_PROMPT,
   ORCHESTRATOR_SYSTEM_PROMPT,
   searchPlanningSystemPrompt,
-} from "../src/production-prompts.js";
+} from "../src/agents/production-prompts.js";
 
 test("搜索与主 Agent 提示词遵守真实业务预算、审批和逐轮边界", () => {
   const search = searchPlanningSystemPrompt(37);

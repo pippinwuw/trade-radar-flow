@@ -1,4 +1,4 @@
-import type { CompanyCandidate } from "./domain.js";
+import type { CompanyCandidate } from "../domain.js";
 
 export const demoCandidates: CompanyCandidate[] = [
   {

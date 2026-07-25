@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { requireCountry } from "../src/countries/registry.js";
+import { requireCountry } from "../src/market/registry.js";
 import { SerperClient } from "../src/discovery/serper-client.js";
 import { AppDatabase } from "../src/storage/database.js";
 

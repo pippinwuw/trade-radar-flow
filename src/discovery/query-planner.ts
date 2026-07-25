@@ -1,10 +1,10 @@
-import type { AgentRuntime, CampaignAgentContext } from "../agent-runtime.js";
-import { requireCountry } from "../countries/registry.js";
+import type { AgentRuntime, CampaignAgentContext } from "../agents/agent-runtime.js";
+import { requireCountry } from "../market/registry.js";
 import type { CampaignInput, CampaignStrategy } from "../domain.js";
 import {
   getApprovedMarketPolicy,
   getMarketPolicy,
-} from "../market-policy.js";
+} from "../market/policy.js";
 
 export async function buildCampaignAgentContext(
   input: CampaignInput,

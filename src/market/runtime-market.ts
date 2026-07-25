@@ -10,7 +10,7 @@ import { logger } from "../logging/logger.js";
 import {
   createGeneratedMarketPolicy,
   marketPolicyDataDirectory,
-} from "../market-policy.js";
+} from "./policy.js";
 
 export interface RuntimeMarketCountryInput extends CountryProfile {
   queryPatterns: string[];

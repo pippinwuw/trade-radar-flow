@@ -4,7 +4,7 @@ import type {
   CountryProfile,
   SupportedCountryId,
 } from "../domain.js";
-import { marketPolicyDataDirectory } from "../market-policy.js";
+import { marketPolicyDataDirectory } from "./policy.js";
 
 const profiles = new Map<SupportedCountryId, CountryProfile>();
 

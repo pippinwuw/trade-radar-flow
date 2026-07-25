@@ -5,7 +5,7 @@ import type {
   OrchestratorMessage,
   OrchestratorSession,
 } from "../domain.js";
-import type { AgentRuntime } from "../agent-runtime.js";
+import type { AgentRuntime } from "../agents/agent-runtime.js";
 import {
   getAgentRuntime,
   getCampaign,
@@ -14,11 +14,11 @@ import {
 import {
   requireCountry,
   resolveCountry,
-} from "../countries/registry.js";
+} from "../market/registry.js";
 import {
   ensureRuntimeMarketCountry,
   type RuntimeMarketCountryInput,
-} from "../countries/runtime-market.js";
+} from "../market/runtime-market.js";
 import {
   approveMarketPolicy,
   createGeneratedMarketPolicy,
@@ -28,7 +28,7 @@ import {
   markMarketPolicyReviewed,
   marketPolicyRef,
   rejectMarketPolicy,
-} from "../market-policy.js";
+} from "../market/policy.js";
 import { AppDatabase, getDatabase } from "../storage/database.js";
 import {
   CampaignOrchestratorAgent,

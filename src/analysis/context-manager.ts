@@ -3,7 +3,7 @@ import type {
   AgentUsage,
   ContextSectionTrace,
   MarketPolicy,
-} from "./domain.js";
+} from "../domain.js";
 
 export type ContextTrust =
   | "system"

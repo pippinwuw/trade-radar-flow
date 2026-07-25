@@ -5,7 +5,7 @@ import {
   mapWithConcurrency,
   OperationTimeoutError,
   withRetry,
-} from "../src/concurrency.js";
+} from "../src/lib/concurrency.js";
 
 test("并发池不超过指定并发数且保持输入顺序", async () => {
   let active = 0;

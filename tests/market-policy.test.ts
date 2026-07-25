@@ -8,13 +8,13 @@ import {
   listMarketPolicies,
   markMarketPolicyReviewed,
   saveMarketPolicyDraft,
-} from "../src/market-policy.js";
+} from "../src/market/policy.js";
 import {
   listCountryProfiles,
   requireCountry,
   resolveCountry,
-} from "../src/countries/registry.js";
-import { DemoAgentRuntime } from "../src/demo-agent-runtime.js";
+} from "../src/market/registry.js";
+import { DemoAgentRuntime } from "../src/agents/demo-agent-runtime.js";
 import { buildCampaignAgentContext } from "../src/discovery/query-planner.js";
 import { createDefaultStrategy } from "../src/orchestrator/strategy-template.js";
 import { getDatabase } from "../src/storage/database.js";

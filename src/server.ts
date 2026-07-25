@@ -10,19 +10,19 @@ import {
   campaignExportFilename,
   projectCampaignExport,
   serializeCampaignJson,
-} from "./campaign-export.js";
-import { crawlCandidate } from "./crawler.js";
-import { listCountryProfiles } from "./countries/registry.js";
+} from "./export/campaign-export.js";
+import { crawlCandidate } from "./crawler/index.js";
+import { listCountryProfiles } from "./market/registry.js";
 import type {
   CampaignInput,
   CampaignStrategy,
   LeadStatus,
   MarketPolicy,
 } from "./domain.js";
-import { saveMarketPolicyDraft } from "./market-policy.js";
+import { saveMarketPolicyDraft } from "./market/policy.js";
 import { getOrchestratorService } from "./orchestrator/service.js";
 import { logger, runWithLogContext } from "./logging/logger.js";
-import { OperationTimeoutError } from "./concurrency.js";
+import { OperationTimeoutError } from "./lib/concurrency.js";
 import {
   getAgentRuntime,
   getCampaign,

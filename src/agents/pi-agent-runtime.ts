@@ -20,15 +20,15 @@ import type {
   CountryProfile,
   MarketPolicy,
   SearchPlan,
-} from "./domain.js";
+} from "../domain.js";
 import {
   OperationTimeoutError,
   positiveIntegerFromEnv,
-} from "./concurrency.js";
-import { logger } from "./logging/logger.js";
+} from "../lib/concurrency.js";
+import { logger } from "../logging/logger.js";
 import {
   DEFAULT_SEARCH_QUERIES,
-} from "./limits.js";
+} from "../lib/limits.js";
 import {
   COMPANY_ANALYSIS_SYSTEM_PROMPT,
   GLOBAL_BUSINESS_SYSTEM_PROMPT,
@@ -39,20 +39,20 @@ import {
   type CompanyAnalysisSubmissionV2,
   CompanyAnalysisValidationError,
   validateAndNormalizeCompanyAnalysisV2,
-} from "./validation/company-analysis-validator.js";
+} from "../validation/company-analysis-validator.js";
 import {
   compileContext,
   marketPolicyProjection,
   readUsageFromMessages,
   type ContextEnvelope,
-} from "./context-manager.js";
+} from "../analysis/context-manager.js";
 import {
   buildCompanyContext,
   readEvidenceContext,
   searchCompanyEvidence,
   type EvidenceSlot,
-} from "./company-context.js";
-import { getDatabase } from "./storage/database.js";
+} from "../analysis/company-context.js";
+import { getDatabase } from "../storage/database.js";
 
 const analysisQualificationSchema = Type.Object({
   isQualified: Type.Boolean(),

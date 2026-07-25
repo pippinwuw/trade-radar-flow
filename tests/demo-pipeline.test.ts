@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DemoAgentRuntime } from "../src/demo-agent-runtime.js";
-import { demoCandidates } from "../src/demo-data.js";
+import { DemoAgentRuntime } from "../src/agents/demo-agent-runtime.js";
+import { demoCandidates } from "../src/agents/demo-data.js";
 import {
   runCampaign,
   runOfflineSampleCampaign,

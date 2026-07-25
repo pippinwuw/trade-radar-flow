@@ -1,8 +1,8 @@
 import type {
   AgentRuntime,
   CampaignAgentContext,
-} from "../agent-runtime.js";
-import { crawlCandidate } from "../crawler.js";
+} from "../agents/agent-runtime.js";
+import { crawlCandidate } from "../crawler/index.js";
 import type {
   CampaignInput,
   CompanyCandidate,
@@ -26,11 +26,11 @@ import {
   mapWithConcurrency,
   positiveIntegerFromEnv,
   withRetry,
-} from "../concurrency.js";
+} from "../lib/concurrency.js";
 import {
   DEFAULT_SEARCH_QUERIES,
   MAX_RESULTS_PER_QUERY,
-} from "../limits.js";
+} from "../lib/limits.js";
 import {
   buildEffectiveSearchQuery,
   resolveQueryGroupId,

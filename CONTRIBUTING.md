@@ -14,8 +14,9 @@
 
 - 保持搜索、抓取、公司分析、验证和人工审核之间的职责边界。
 - 不得削弱策略审批、预算、SSRF 防护、证据引用、联系人防猜测或人工发送边界。
-- 生产提示词集中放在 `src/production-prompts.ts`。
-- 新国家规则放在 `agent-skills/markets/<country>/SKILL.md`，不要硬编码到通用流水线。
+- 生产提示词集中放在 `src/agents/production-prompts.ts`。
+- 新国家规则放在 `market-policies/<marketId>/`（profile + 版本化 policy JSON），
+  不要硬编码到通用流水线。
 - 不要提交真实客户名称、Campaign ID、联系人、导出文件、数据库、日志或客户模板。
 - 测试必须能在没有真实 API Key 和付费模型调用的情况下运行。
 
