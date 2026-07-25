@@ -148,4 +148,26 @@ test("已知目录域名和目录型搜索结果在抓取前排除", () => {
     }),
     true,
   );
+  assert.equal(
+    isExcludedSearchHit({
+      query: "plandeka PVC",
+      position: 7,
+      title: "Ogłoszenia lokalne",
+      link: "https://sprzedajemy.pl/materialy",
+      snippet: "Portal ogłoszeniowy dla kupujących i sprzedających",
+      domain: "sprzedajemy.pl",
+    }),
+    true,
+  );
+  assert.equal(
+    isExcludedSearchHit({
+      query: "plandeka PVC",
+      position: 8,
+      title: "Tłumaczenie PVC coated fabric",
+      link: "https://linguee.pl/angielski-polski",
+      snippet: "Słownik internetowy i przykładowe tłumaczenia",
+      domain: "linguee.pl",
+    }),
+    true,
+  );
 });

@@ -13,7 +13,8 @@ import {
   type EvidenceSnippet,
 } from "../validation/company-analysis-validator.js";
 
-export const COMPANY_ANALYSIS_CONTRACT_VERSION = "company-analysis-v2";
+export const COMPANY_ANALYSIS_CONTRACT_VERSION = "company-analysis-v3";
+export const COMPANY_EVIDENCE_INDEX_VERSION = "company-evidence-v2-large-chunks";
 
 export type EvidenceSlot =
   | "identity"
@@ -24,12 +25,12 @@ export type EvidenceSlot =
   | "exclusionsAndRisks";
 
 const SLOT_QUOTAS: Record<EvidenceSlot, number> = {
-  identity: 6,
-  productFit: 10,
-  businessRole: 6,
-  scaleAndImport: 6,
-  countrySignals: 4,
-  exclusionsAndRisks: 4,
+  identity: 10,
+  productFit: 20,
+  businessRole: 12,
+  scaleAndImport: 12,
+  countrySignals: 8,
+  exclusionsAndRisks: 10,
 };
 
 export interface CompanyEvidenceItem {
@@ -57,12 +58,14 @@ export interface CompanyContextBuild {
       duplicateOf?: number;
     }>;
     contactCandidateCount: number;
+    crawlWarnings: string[];
     historicalRuns: number;
     revalidatedPriorEvidenceCount: number;
     nonEvidenceNotice: string;
   };
   catalog: EvidenceSnippet[];
   evidencePack: Record<EvidenceSlot, CompanyEvidenceItem[]>;
+  rankedEvidence: Record<EvidenceSlot, CompanyEvidenceItem[]>;
   rankedContacts: ContactReference[];
   priorLeads: LeadRecord[];
 }
@@ -229,6 +232,7 @@ export function buildCompanyContext(
     }))
     .sort((left, right) => left.url.localeCompare(right.url));
   const pageFingerprint = hash({
+    evidenceIndexVersion: COMPANY_EVIDENCE_INDEX_VERSION,
     domain: candidate.domain.toLowerCase(),
     pages: normalizedPages,
   });
@@ -281,7 +285,15 @@ export function buildCompanyContext(
     candidate.domain,
     pageFingerprint,
   );
-  const catalog = storedIndex?.snippets ?? buildEvidenceCatalog(candidate.pages);
+  const excludedPageIndexes = new Set<number>([
+    ...duplicateByIndex.keys(),
+    ...candidate.pages
+      .map((page, pageIndex) => (!page.text.trim() ? pageIndex : -1))
+      .filter((pageIndex) => pageIndex >= 0),
+  ]);
+  const catalog =
+    storedIndex?.snippets ??
+    buildEvidenceCatalog(candidate.pages, excludedPageIndexes);
   if (!storedIndex) {
     database.putCompanyEvidenceIndex({
       key: hash({ domain: candidate.domain.toLowerCase(), pageFingerprint }),
@@ -313,11 +325,10 @@ export function buildCompanyContext(
       .map((snippet) => snippet.ref),
   );
 
-  const evidencePack = Object.fromEntries(
+  const rankedEvidence = Object.fromEntries(
     (Object.keys(SLOT_QUOTAS) as EvidenceSlot[]).map((slot) => {
       const terms = normalizedTokens(termsForSlot(slot, context));
       const ranked = catalog
-        .filter((snippet) => !duplicateByIndex.has(snippet.pageIndex))
         .map((snippet) => {
           const page = candidate.pages[snippet.pageIndex];
           const tokens = normalizedTokens([
@@ -350,10 +361,15 @@ export function buildCompanyContext(
             right.score - left.score ||
             left.pageIndex - right.pageIndex ||
             left.evidenceRef.localeCompare(right.evidenceRef),
-        )
-        .slice(0, SLOT_QUOTAS[slot]);
+        );
       return [slot, ranked];
     }),
+  ) as Record<EvidenceSlot, CompanyEvidenceItem[]>;
+  const evidencePack = Object.fromEntries(
+    (Object.keys(SLOT_QUOTAS) as EvidenceSlot[]).map((slot) => [
+      slot,
+      rankedEvidence[slot].slice(0, SLOT_QUOTAS[slot]),
+    ]),
   ) as Record<EvidenceSlot, CompanyEvidenceItem[]>;
 
   const rankedContacts = buildContactCatalog(candidate.contactCandidates).sort(
@@ -377,6 +393,7 @@ export function buildCompanyContext(
         duplicateOf: duplicateByIndex.get(pageIndex),
       })),
       contactCandidateCount: candidate.contactCandidates.length,
+      crawlWarnings: candidate.crawlWarnings ?? [],
       historicalRuns: priorLeads.length,
       revalidatedPriorEvidenceCount: revalidatedRefs.size,
       nonEvidenceNotice:
@@ -384,6 +401,7 @@ export function buildCompanyContext(
     },
     catalog,
     evidencePack,
+    rankedEvidence,
     rankedContacts,
     priorLeads,
   };
@@ -437,9 +455,33 @@ export function searchCompanyEvidence(
         left.evidenceRef.localeCompare(right.evidenceRef),
     );
   const start = Math.max(0, cursor);
-  const size = Math.max(1, Math.min(8, limit));
+  const size = Math.max(1, Math.min(24, limit));
   return {
     items: items.slice(start, start + size),
     nextCursor: start + size < items.length ? start + size : undefined,
+  };
+}
+
+export function pageCompanyEvidenceSlot(
+  build: CompanyContextBuild,
+  slot: EvidenceSlot,
+  cursor: number,
+  limit: number,
+): {
+  slot: EvidenceSlot;
+  items: CompanyEvidenceItem[];
+  total: number;
+  cursor: number;
+  nextCursor?: number;
+} {
+  const ranked = build.rankedEvidence[slot];
+  const start = Math.max(0, cursor);
+  const size = Math.max(1, Math.min(32, limit));
+  return {
+    slot,
+    items: ranked.slice(start, start + size),
+    total: ranked.length,
+    cursor: start,
+    nextCursor: start + size < ranked.length ? start + size : undefined,
   };
 }

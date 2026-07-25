@@ -70,6 +70,45 @@ const elements = {
   saveStrategyButton: document.querySelector("#saveStrategyButton"),
   approveStrategyButton: document.querySelector("#approveStrategyButton"),
   executeStrategyButton: document.querySelector("#executeStrategyButton"),
+  strategyPanel: document.querySelector("#strategyPanel"),
+  marketPolicyPanel: document.querySelector("#marketPolicyPanel"),
+  marketPolicyEmpty: document.querySelector("#marketPolicyEmpty"),
+  marketPolicyForm: document.querySelector("#marketPolicyForm"),
+  marketPolicySelect: document.querySelector("#marketPolicySelect"),
+  marketPolicyMeta: document.querySelector("#marketPolicyMeta"),
+  marketPolicyTabButton: document.querySelector("#marketPolicyTabButton"),
+  marketPolicyPanelMessage: document.querySelector(
+    "#marketPolicyPanelMessage",
+  ),
+  mpMarketId: document.querySelector("#mpMarketId"),
+  mpDefaultLanguage: document.querySelector("#mpDefaultLanguage"),
+  mpLanguages: document.querySelector("#mpLanguages"),
+  mpBuyerRoleTerms: document.querySelector("#mpBuyerRoleTerms"),
+  mpQueryPatterns: document.querySelector("#mpQueryPatterns"),
+  mpTranslationRestrictions: document.querySelector(
+    "#mpTranslationRestrictions",
+  ),
+  mpIdentitySignals: document.querySelector("#mpIdentitySignals"),
+  mpBuyerSignals: document.querySelector("#mpBuyerSignals"),
+  mpImportSignals: document.querySelector("#mpImportSignals"),
+  mpFalsePositives: document.querySelector("#mpFalsePositives"),
+  mpExclusions: document.querySelector("#mpExclusions"),
+  mpLegalSuffixes: document.querySelector("#mpLegalSuffixes"),
+  mpPreferredContacts: document.querySelector("#mpPreferredContacts"),
+  mpValidationNotes: document.querySelector("#mpValidationNotes"),
+  mpEtiquette: document.querySelector("#mpEtiquette"),
+  mpReviewNotes: document.querySelector("#mpReviewNotes"),
+  saveMarketPolicyButton: document.querySelector("#saveMarketPolicyButton"),
+  reviewMarketPolicyDraftButton: document.querySelector(
+    "#reviewMarketPolicyDraftButton",
+  ),
+  rejectMarketPolicyButton: document.querySelector(
+    "#rejectMarketPolicyButton",
+  ),
+  approveMarketPolicyButton: document.querySelector(
+    "#approveMarketPolicyButton",
+  ),
+  strategyPanelTabs: document.querySelectorAll("[data-strategy-panel]"),
   orchestratorProgress: document.querySelector("#orchestratorProgress"),
   orchestratorProgressTitle: document.querySelector(
     "#orchestratorProgressTitle",
@@ -77,6 +116,10 @@ const elements = {
   orchestratorProgressText: document.querySelector(
     "#orchestratorProgressText",
   ),
+  orchestratorPipelineStages: document.querySelector(
+    "#orchestratorPipelineStages",
+  ),
+  orchestratorRoundCard: document.querySelector("#orchestratorRoundCard"),
   orchestratorRoundProgress: document.querySelector(
     "#orchestratorRoundProgress",
   ),
@@ -105,6 +148,18 @@ let orchestratorSessions = [];
 let orchestratorMessages = [];
 let orchestratorPollTimer;
 let chatRequestPending = false;
+let activeStrategyPanel = "strategy";
+let sessionMarketPolicies = [];
+let activeMarketPolicy = null;
+let countryProfiles = [];
+let lastFilledMarketPolicyKey = "";
+
+const marketPolicyStatusLabels = {
+  draft: "草稿",
+  reviewed: "主 Agent 已审阅",
+  approved: "已批准",
+  superseded: "已替代",
+};
 
 function clientLog(event, data = {}) {
   const payload = JSON.stringify({
@@ -610,6 +665,21 @@ async function copyDraft(event) {
   }, 1200);
 }
 
+function lines(value) {
+  return String(value ?? "")
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function joinLines(values) {
+  return Array.isArray(values) ? values.join("\n") : "";
+}
+
+function joinCsv(values) {
+  return Array.isArray(values) ? values.join(", ") : "";
+}
+
 function csv(value) {
   return value
     .split(/[,，\n]/)
@@ -721,6 +791,427 @@ function renderOrchestratorMessages() {
   elements.agentMessages.scrollTop = elements.agentMessages.scrollHeight;
 }
 
+function switchStrategyPanel(panelId) {
+  activeStrategyPanel = panelId === "marketPolicy" ? "marketPolicy" : "strategy";
+  elements.strategyPanelTabs.forEach((tab) => {
+    const active = tab.dataset.strategyPanel === activeStrategyPanel;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
+  });
+  elements.strategyPanel.classList.toggle(
+    "hidden",
+    activeStrategyPanel !== "strategy",
+  );
+  elements.marketPolicyPanel.classList.toggle(
+    "hidden",
+    activeStrategyPanel !== "marketPolicy",
+  );
+  if (activeStrategyPanel === "marketPolicy") {
+    void refreshSessionMarketPolicy({ preferPending: true, forceFill: true });
+  } else if (orchestratorSession) {
+    elements.strategyVersion.textContent = `v ${orchestratorSession.strategyVersion} · ${orchestratorSession.strategyHash}`;
+  }
+}
+
+function policyOptionLabel(policy) {
+  const status =
+    marketPolicyStatusLabels[policy.status] ?? policy.status;
+  return `${policy.marketId} · v${policy.version} · ${status}`;
+}
+
+function pickPreferredMarketPolicy(policies, options = {}) {
+  if (!policies.length) return null;
+  const ref = orchestratorSession?.strategy?.marketPolicyRef;
+  if (ref) {
+    const matched = policies.find(
+      (policy) =>
+        policy.marketId === ref.marketId &&
+        (policy.version === ref.version || policy.hash === ref.hash),
+    );
+    if (matched && !options.preferPending) return matched;
+  }
+  const pending = policies.filter(
+    (policy) => policy.status === "draft" || policy.status === "reviewed",
+  );
+  if (pending.length) {
+    return pending.sort((left, right) =>
+      String(right.metadata?.createdAt ?? "").localeCompare(
+        String(left.metadata?.createdAt ?? ""),
+      ),
+    )[0];
+  }
+  if (ref) {
+    const byRef = policies.find(
+      (policy) =>
+        policy.marketId === ref.marketId && policy.version === ref.version,
+    );
+    if (byRef) return byRef;
+  }
+  const country = orchestratorSession?.strategy?.country;
+  const profile = countryProfiles.find(
+    (item) =>
+      item.displayName === country ||
+      item.id === country ||
+      item.aliases?.includes?.(country),
+  );
+  if (profile) {
+    const approved = policies.find(
+      (policy) =>
+        policy.marketId === profile.id && policy.status === "approved",
+    );
+    if (approved) return approved;
+  }
+  return policies[0] ?? null;
+}
+
+function renderMarketPolicySelect() {
+  const policies = sessionMarketPolicies;
+  if (!policies.length) {
+    elements.marketPolicySelect.innerHTML = "";
+    return;
+  }
+  elements.marketPolicySelect.innerHTML = policies
+    .map(
+      (policy) =>
+        `<option value="${escapeHtml(policy.marketId)}::${escapeHtml(policy.version)}">${escapeHtml(policyOptionLabel(policy))}</option>`,
+    )
+    .join("");
+  if (activeMarketPolicy) {
+    elements.marketPolicySelect.value = `${activeMarketPolicy.marketId}::${activeMarketPolicy.version}`;
+  }
+}
+
+function fillMarketPolicyForm(policy) {
+  if (!policy) return;
+  elements.mpMarketId.value = policy.marketId;
+  elements.mpDefaultLanguage.value =
+    policy.contactAndOutreach.defaultLanguage ?? "";
+  elements.mpLanguages.value = joinCsv(policy.searchLocalization.languages);
+  elements.mpBuyerRoleTerms.value = joinCsv(
+    policy.searchLocalization.buyerRoleTerms,
+  );
+  elements.mpQueryPatterns.value = joinLines(
+    policy.searchLocalization.queryPatterns,
+  );
+  elements.mpTranslationRestrictions.value = joinLines(
+    policy.searchLocalization.translationRestrictions,
+  );
+  elements.mpIdentitySignals.value = joinLines(
+    policy.companyAnalysis.identitySignals,
+  );
+  elements.mpBuyerSignals.value = joinLines(
+    policy.companyAnalysis.buyerSignals,
+  );
+  elements.mpImportSignals.value = joinLines(
+    policy.companyAnalysis.importAndScaleSignals,
+  );
+  elements.mpFalsePositives.value = joinLines(
+    policy.companyAnalysis.falsePositivePatterns,
+  );
+  elements.mpExclusions.value = joinLines(policy.companyAnalysis.exclusions);
+  elements.mpLegalSuffixes.value = joinLines(
+    policy.companyAnalysis.legalSuffixSemantics,
+  );
+  elements.mpPreferredContacts.value = joinCsv(
+    policy.contactAndOutreach.preferredContactTerms,
+  );
+  elements.mpValidationNotes.value = joinLines(
+    policy.contactAndOutreach.validationNotes,
+  );
+  elements.mpEtiquette.value = joinLines(policy.contactAndOutreach.etiquette);
+  elements.mpReviewNotes.value = joinLines(policy.metadata?.reviewNotes ?? []);
+  const status =
+    marketPolicyStatusLabels[policy.status] ?? policy.status;
+  elements.marketPolicyMeta.textContent =
+    `${policy.marketId} · v${policy.version} · ${status} · hash ${policy.hash}` +
+    (policy.metadata?.source ? ` · 来源 ${policy.metadata.source}` : "");
+  const editable =
+    policy.status === "draft" || policy.status === "reviewed";
+  elements.marketPolicyForm
+    .querySelectorAll("input, textarea")
+    .forEach((input) => {
+      if (input.id === "mpMarketId") {
+        input.disabled = true;
+        return;
+      }
+      input.disabled = !editable;
+    });
+  elements.marketPolicySelect.disabled = false;
+  elements.saveMarketPolicyButton.classList.toggle("hidden", !editable);
+  elements.reviewMarketPolicyDraftButton.classList.toggle(
+    "hidden",
+    policy.status !== "draft",
+  );
+  elements.rejectMarketPolicyButton.classList.toggle(
+    "hidden",
+    policy.status !== "reviewed",
+  );
+  elements.approveMarketPolicyButton.classList.toggle(
+    "hidden",
+    policy.status !== "reviewed",
+  );
+  if (policy.status === "approved") {
+    elements.strategyVersion.textContent =
+      activeStrategyPanel === "marketPolicy"
+        ? `policy v${policy.version}`
+        : elements.strategyVersion.textContent;
+  }
+}
+
+function marketPolicyFromForm() {
+  const current = activeMarketPolicy;
+  if (!current) throw new Error("当前没有可保存的 MarketPolicy");
+  return {
+    schemaVersion: 1,
+    marketId: current.marketId,
+    searchLocalization: {
+      languages: csv(elements.mpLanguages.value),
+      buyerRoleTerms: csv(elements.mpBuyerRoleTerms.value),
+      queryPatterns: lines(elements.mpQueryPatterns.value),
+      translationRestrictions: lines(
+        elements.mpTranslationRestrictions.value,
+      ),
+    },
+    companyAnalysis: {
+      identitySignals: lines(elements.mpIdentitySignals.value),
+      legalSuffixSemantics: lines(elements.mpLegalSuffixes.value),
+      buyerSignals: lines(elements.mpBuyerSignals.value),
+      importAndScaleSignals: lines(elements.mpImportSignals.value),
+      falsePositivePatterns: lines(elements.mpFalsePositives.value),
+      exclusions: lines(elements.mpExclusions.value),
+    },
+    contactAndOutreach: {
+      preferredContactTerms: csv(elements.mpPreferredContacts.value),
+      validationNotes: lines(elements.mpValidationNotes.value),
+      defaultLanguage: elements.mpDefaultLanguage.value.trim() || "English",
+      etiquette: lines(elements.mpEtiquette.value),
+    },
+    metadata: {
+      reviewNotes: lines(elements.mpReviewNotes.value),
+    },
+  };
+}
+
+function updateMarketPolicyTabBadge() {
+  const pending = sessionMarketPolicies.some(
+    (policy) => policy.status === "draft" || policy.status === "reviewed",
+  );
+  elements.marketPolicyTabButton.dataset.pending = pending ? "true" : "false";
+}
+
+async function refreshSessionMarketPolicy(options = {}) {
+  try {
+    if (!countryProfiles.length) {
+      countryProfiles = await request("/api/countries");
+    }
+    const marketId = orchestratorSession
+      ? orchestratorSession.strategy.marketPolicyRef?.marketId ??
+        countryProfiles.find(
+          (item) =>
+            item.displayName === orchestratorSession.strategy.country ||
+            item.id === orchestratorSession.strategy.country,
+        )?.id
+      : undefined;
+    const query = marketId
+      ? `?marketId=${encodeURIComponent(marketId)}`
+      : "";
+    let policies = marketId
+      ? await request(`/api/market-policies${query}`)
+      : [];
+    if (!Array.isArray(policies)) policies = [];
+    const pendingAll = await request("/api/market-policies");
+    const allPolicies = Array.isArray(pendingAll) ? pendingAll : [];
+    const extraPending = allPolicies.filter(
+      (policy) =>
+        (policy.status === "draft" ||
+          policy.status === "reviewed" ||
+          (!orchestratorSession && policy.status === "approved")) &&
+        !policies.some(
+          (item) =>
+            item.marketId === policy.marketId &&
+            item.version === policy.version,
+        ),
+    );
+    const pendingOnly = options.preferPending
+      ? allPolicies.filter(
+          (policy) =>
+            policy.status === "draft" || policy.status === "reviewed",
+        )
+      : [];
+    sessionMarketPolicies = [
+      ...policies,
+      ...extraPending,
+      ...pendingOnly.filter(
+        (policy) =>
+          !policies.some(
+            (item) =>
+              item.marketId === policy.marketId &&
+              item.version === policy.version,
+          ) &&
+          !extraPending.some(
+            (item) =>
+              item.marketId === policy.marketId &&
+              item.version === policy.version,
+          ),
+      ),
+    ].sort((left, right) =>
+      String(right.metadata?.createdAt ?? "").localeCompare(
+        String(left.metadata?.createdAt ?? ""),
+      ),
+    );
+    const previousKey = activeMarketPolicy
+      ? `${activeMarketPolicy.marketId}::${activeMarketPolicy.version}`
+      : "";
+    activeMarketPolicy =
+      (options.keepSelection &&
+        sessionMarketPolicies.find(
+          (policy) =>
+            `${policy.marketId}::${policy.version}` === previousKey,
+        )) ||
+      pickPreferredMarketPolicy(sessionMarketPolicies, options);
+    updateMarketPolicyTabBadge();
+    if (!activeMarketPolicy) {
+      elements.marketPolicyEmpty.classList.remove("hidden");
+      elements.marketPolicyForm.classList.add("hidden");
+      elements.marketPolicyEmpty.textContent = orchestratorSession
+        ? "当前会话尚无 MarketPolicy。向主 Agent 指定未注册国家后，将在此生成可编辑草稿。"
+        : "创建会话或切换到新国家后，这里会显示待审阅的 MarketPolicy 草稿。";
+      return;
+    }
+    elements.marketPolicyEmpty.classList.add("hidden");
+    elements.marketPolicyForm.classList.remove("hidden");
+    renderMarketPolicySelect();
+    const nextKey = `${activeMarketPolicy.marketId}::${activeMarketPolicy.version}::${activeMarketPolicy.hash}::${activeMarketPolicy.status}`;
+    if (
+      options.forceFill ||
+      !options.keepSelection ||
+      nextKey !== lastFilledMarketPolicyKey
+    ) {
+      fillMarketPolicyForm(activeMarketPolicy);
+      lastFilledMarketPolicyKey = nextKey;
+    }
+    if (activeStrategyPanel === "marketPolicy") {
+      elements.strategyVersion.textContent = `policy v${activeMarketPolicy.version} · ${activeMarketPolicy.hash}`;
+    }
+    if (
+      options.autoSwitch &&
+      (activeMarketPolicy.status === "draft" ||
+        activeMarketPolicy.status === "reviewed")
+    ) {
+      activeStrategyPanel = "marketPolicy";
+      elements.strategyPanelTabs.forEach((tab) => {
+        const active = tab.dataset.strategyPanel === "marketPolicy";
+        tab.classList.toggle("active", active);
+        tab.setAttribute("aria-selected", String(active));
+      });
+      elements.strategyPanel.classList.add("hidden");
+      elements.marketPolicyPanel.classList.remove("hidden");
+    }
+  } catch (error) {
+    elements.marketPolicyPanelMessage.textContent = error.message;
+  }
+}
+
+async function selectMarketPolicyFromList() {
+  const [marketId, version] = String(elements.marketPolicySelect.value).split(
+    "::",
+  );
+  if (!marketId || !version) return;
+  try {
+    activeMarketPolicy = await request(
+      `/api/market-policies/${encodeURIComponent(marketId)}/${encodeURIComponent(version)}`,
+    );
+    fillMarketPolicyForm(activeMarketPolicy);
+    lastFilledMarketPolicyKey = `${activeMarketPolicy.marketId}::${activeMarketPolicy.version}::${activeMarketPolicy.hash}::${activeMarketPolicy.status}`;
+    elements.marketPolicyPanelMessage.textContent = "";
+    if (activeStrategyPanel === "marketPolicy") {
+      elements.strategyVersion.textContent = `policy v${activeMarketPolicy.version} · ${activeMarketPolicy.hash}`;
+    }
+  } catch (error) {
+    elements.marketPolicyPanelMessage.textContent = error.message;
+  }
+}
+
+async function saveSessionMarketPolicy() {
+  if (!activeMarketPolicy) return;
+  elements.saveMarketPolicyButton.disabled = true;
+  elements.marketPolicyPanelMessage.textContent = "正在保存 MarketPolicy...";
+  try {
+    activeMarketPolicy = await request(
+      `/api/market-policies/${encodeURIComponent(activeMarketPolicy.marketId)}/${encodeURIComponent(activeMarketPolicy.version)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(marketPolicyFromForm()),
+      },
+    );
+    elements.marketPolicyPanelMessage.textContent =
+      `已保存为新草稿 v${activeMarketPolicy.version}`;
+    await refreshSessionMarketPolicy({ keepSelection: false, preferPending: true });
+  } catch (error) {
+    elements.marketPolicyPanelMessage.textContent = error.message;
+  } finally {
+    elements.saveMarketPolicyButton.disabled = false;
+  }
+}
+
+async function reviewSessionMarketPolicy() {
+  if (!activeMarketPolicy) return;
+  elements.reviewMarketPolicyDraftButton.disabled = true;
+  elements.marketPolicyPanelMessage.textContent = "主 Agent 正在审阅...";
+  try {
+    activeMarketPolicy = await request(
+      `/api/market-policies/${encodeURIComponent(activeMarketPolicy.marketId)}/${encodeURIComponent(activeMarketPolicy.version)}/review`,
+      { method: "POST", body: "{}" },
+    );
+    elements.marketPolicyPanelMessage.textContent = "主 Agent 审阅完成，请用户批准。";
+    await refreshSessionMarketPolicy({ preferPending: true });
+  } catch (error) {
+    elements.marketPolicyPanelMessage.textContent = error.message;
+  } finally {
+    elements.reviewMarketPolicyDraftButton.disabled = false;
+  }
+}
+
+async function approveSessionMarketPolicy() {
+  if (!activeMarketPolicy) return;
+  elements.approveMarketPolicyButton.disabled = true;
+  elements.marketPolicyPanelMessage.textContent = "正在批准并生效...";
+  try {
+    activeMarketPolicy = await request(
+      `/api/market-policies/${encodeURIComponent(activeMarketPolicy.marketId)}/${encodeURIComponent(activeMarketPolicy.version)}/approve`,
+      { method: "POST", body: "{}" },
+    );
+    elements.marketPolicyPanelMessage.textContent =
+      "已批准。可让主 Agent 重新绑定该国家并预览搜索。";
+    if (orchestratorSession) {
+      await loadOrchestratorSession(orchestratorSession.id, { silent: true });
+    }
+    await refreshSessionMarketPolicy();
+  } catch (error) {
+    elements.marketPolicyPanelMessage.textContent = error.message;
+  } finally {
+    elements.approveMarketPolicyButton.disabled = false;
+  }
+}
+
+async function rejectSessionMarketPolicy() {
+  if (!activeMarketPolicy) return;
+  elements.rejectMarketPolicyButton.disabled = true;
+  elements.marketPolicyPanelMessage.textContent = "正在拒绝...";
+  try {
+    await request(
+      `/api/market-policies/${encodeURIComponent(activeMarketPolicy.marketId)}/${encodeURIComponent(activeMarketPolicy.version)}/reject`,
+      { method: "POST", body: "{}" },
+    );
+    elements.marketPolicyPanelMessage.textContent = "已拒绝该版本。";
+    await refreshSessionMarketPolicy({ preferPending: true });
+  } catch (error) {
+    elements.marketPolicyPanelMessage.textContent = error.message;
+  } finally {
+    elements.rejectMarketPolicyButton.disabled = false;
+  }
+}
+
 function renderStrategy() {
   const session = orchestratorSession;
   if (!session) {
@@ -731,7 +1222,9 @@ function renderStrategy() {
   const strategy = session.strategy;
   elements.strategyEmpty.classList.add("hidden");
   elements.strategyForm.classList.remove("hidden");
-  elements.strategyVersion.textContent = `v ${session.strategyVersion} · ${session.strategyHash}`;
+  if (activeStrategyPanel === "strategy") {
+    elements.strategyVersion.textContent = `v ${session.strategyVersion} · ${session.strategyHash}`;
+  }
   elements.strategyObjective.value = strategy.objective;
   elements.strategyRoles.value = strategy.targetCustomer.businessRoles.join(", ");
   elements.strategyIndustries.value =
@@ -836,9 +1329,21 @@ function renderOrchestratorReport() {
     ?.addEventListener("click", confirmOrchestratorReport);
 }
 
-function companyProgressText(currentCampaign) {
+function companyStatusCounts(currentCampaign) {
   const companies = currentCampaign?.discovery?.companies;
-  if (!Array.isArray(companies) || !companies.length) return "";
+  if (!Array.isArray(companies) || !companies.length) {
+    return {
+      total: 0,
+      crawling: 0,
+      analyzing: 0,
+      analyzed: 0,
+      crawlFailed: 0,
+      countryRejected: 0,
+      analysisFailed: 0,
+      pending: 0,
+      completed: 0,
+    };
+  }
   const count = (status) =>
     companies.filter((company) => company.status === status).length;
   const crawling = count("crawling");
@@ -847,32 +1352,213 @@ function companyProgressText(currentCampaign) {
   const crawlFailed = count("crawl_failed");
   const countryRejected = count("country_rejected");
   const analysisFailed = count("analysis_failed");
-  const completed =
-    analyzed + crawlFailed + countryRejected + analysisFailed;
-  return `已处理 ${completed}/${companies.length} 家；抓取中 ${crawling}，分析中 ${analyzing}，分析成功 ${analyzed}，国家不符 ${countryRejected}，抓取失败 ${crawlFailed}，分析失败 ${analysisFailed}`;
+  const pending = count("pending");
+  return {
+    total: companies.length,
+    crawling,
+    analyzing,
+    analyzed,
+    crawlFailed,
+    countryRejected,
+    analysisFailed,
+    pending,
+    completed: analyzed + crawlFailed + countryRejected + analysisFailed,
+  };
+}
+
+function companyProgressText(currentCampaign) {
+  const counts = companyStatusCounts(currentCampaign);
+  if (!counts.total) return "";
+  return `已处理 ${counts.completed}/${counts.total} 家；抓取中 ${counts.crawling}，分析中 ${counts.analyzing}，分析成功 ${counts.analyzed}，国家不符 ${counts.countryRejected}，抓取失败 ${counts.crawlFailed}，分析失败 ${counts.analysisFailed}`;
+}
+
+function currentDiscoveryRound(currentCampaign) {
+  const rounds = currentCampaign?.discovery?.rounds ?? [];
+  if (!rounds.length) return undefined;
+  return (
+    rounds.find((round) => round.status === "analyzing") ??
+    rounds[rounds.length - 1]
+  );
+}
+
+function pipelineStageState(runPhase, stageId) {
+  const order = [
+    "planning",
+    "discovering",
+    "analyzing",
+    "deciding",
+    "summarizing",
+  ];
+  const currentIndex = order.indexOf(runPhase);
+  const stageIndex = order.indexOf(stageId);
+  if (currentIndex < 0 || stageIndex < 0) return "";
+  if (stageIndex < currentIndex) return "done";
+  if (stageIndex === currentIndex) return "current";
+  return "";
+}
+
+function renderPipelineStages(runPhase) {
+  if (!elements.orchestratorPipelineStages) return;
+  const stages = [
+    ["planning", "准备", "加载已批准查询"],
+    ["discovering", "发现", "搜索 / 抓取 / 校验"],
+    ["analyzing", "分析", "公司 Agent 尽调"],
+    ["deciding", "决策", "轮次饱和判断"],
+    ["summarizing", "报告", "主 Agent 复盘"],
+  ];
+  elements.orchestratorPipelineStages.innerHTML = stages
+    .map(([id, title, detail]) => {
+      const state = pipelineStageState(runPhase, id);
+      return `<li class="pipeline-stage ${state}"><strong>${title}</strong>${detail}</li>`;
+    })
+    .join("");
+}
+
+function roundPhaseLabel(phase) {
+  return (
+    {
+      searching: "Serper 搜索中",
+      crawling: "官网抓取与本地校验",
+      analyzing: "公司分析中",
+      completed: "本轮已完成",
+    }[phase] ?? "处理中"
+  );
+}
+
+function renderPipelineRoundCard(currentCampaign, runPhase) {
+  if (!elements.orchestratorRoundCard) return;
+  const progress = currentCampaign?.discovery?.progress;
+  const maximum = orchestratorSession?.strategy?.budget?.maxQueries ?? "?";
+  const currentRound = currentDiscoveryRound(currentCampaign);
+  const executed = progress?.executedQueries ?? 0;
+  const displayRound = currentRound
+    ? currentRound.status === "analyzing"
+      ? Math.max(executed + 1, (currentRound.index ?? 0) + 1)
+      : executed
+    : runPhase === "discovering" || runPhase === "planning"
+      ? Math.min(executed + 1, Number(maximum) || executed + 1)
+      : executed;
+  const counts = companyStatusCounts(currentCampaign);
+  const subPhase =
+    runPhase === "analyzing"
+      ? "analyzing"
+      : runPhase === "deciding"
+        ? "completed"
+        : (currentRound?.phase ??
+          (runPhase === "discovering" ? "searching" : undefined));
+  const substeps = [
+    ["searching", "搜索"],
+    ["crawling", "抓取校验"],
+    ["analyzing", "分析"],
+    ["completed", "收尾"],
+  ];
+  const substepState = (id) => {
+    const order = ["searching", "crawling", "analyzing", "completed"];
+    if (!subPhase) return "";
+    const currentIndex = order.indexOf(subPhase);
+    const stageIndex = order.indexOf(id);
+    if (currentIndex < 0 || stageIndex < 0) return "";
+    if (stageIndex < currentIndex) return "done";
+    if (stageIndex === currentIndex) return "current";
+    return "";
+  };
+  const queryText =
+    currentRound?.effectiveQuery?.query ??
+    currentRound?.baseQuery?.query ??
+    (runPhase === "discovering"
+      ? "正在准备本轮查询…"
+      : "等待进入发现轮次");
+  const crawlDone =
+    (currentRound?.crawlSucceeded ?? 0) + (currentRound?.crawlFailed ?? 0);
+  const crawlTarget = currentRound?.newDomainCount ?? counts.total;
+  elements.orchestratorRoundCard.innerHTML = `
+    <strong>第 ${displayRound}/${maximum} 轮 · ${escapeHtml(roundPhaseLabel(subPhase))}</strong>
+    <div class="query-line">${escapeHtml(queryText)}</div>
+    <div class="pipeline-substeps">
+      ${substeps
+        .map(
+          ([id, label]) =>
+            `<span class="pipeline-substep ${substepState(id)}">${label}</span>`,
+        )
+        .join("")}
+    </div>
+    <div>
+      Serper 命中 ${currentRound?.rawHitCount ?? 0}
+      · 新增域名 ${currentRound?.newDomainCount ?? 0}
+      · 排除/重复 ${(currentRound?.excludedHitCount ?? 0) + (currentRound?.duplicateDomainCount ?? 0)}
+      · 抓取 ${crawlDone}/${crawlTarget || 0}
+      · 国家拒绝 ${currentRound?.countryRejected ?? 0}
+      · 分析 ${currentRound?.analysisSucceeded ?? counts.analyzed}/${(currentRound?.analysisSucceeded ?? 0) + (currentRound?.analysisFailed ?? 0) || counts.total || 0}
+    </div>
+  `;
 }
 
 function roundProgressHtml(currentCampaign) {
   const discovery = currentCampaign?.discovery;
   const progress = discovery?.progress;
-  if (!progress) return "";
-  const rounds = discovery.rounds ?? [];
-  const currentRound = rounds[rounds.length - 1];
+  if (!progress && !orchestratorSession) return "";
+  const currentRound = currentDiscoveryRound(currentCampaign);
   const maximum = orchestratorSession?.strategy?.budget?.maxQueries ?? "?";
   const group = currentRound
-    ? progress.groups?.[currentRound.groupId]
+    ? progress?.groups?.[currentRound.groupId]
     : undefined;
-  const stopReason = progress.stopReason
+  const counts = companyStatusCounts(currentCampaign);
+  const executed = progress?.executedQueries ?? 0;
+  const displayRound = currentRound?.status === "analyzing"
+    ? Math.max(executed + 1, (currentRound.index ?? 0) + 1)
+    : executed || (orchestratorSession?.runPhase === "discovering" ? 1 : 0);
+  const stopReason = progress?.stopReason
     ? `<span>停止：${escapeHtml(stopReasonLabels[progress.stopReason] ?? progress.stopReason)}</span>`
     : "";
   return [
-    `<span>第 ${progress.executedQueries}/${maximum} 轮</span>`,
-    `<span>本轮新增域名 ${currentRound?.newDomainCount ?? 0}</span>`,
+    `<span>轮次 ${displayRound}/${maximum}</span>`,
+    `<span>子阶段 ${escapeHtml(roundPhaseLabel(currentRound?.phase ?? orchestratorSession?.runPhase))}</span>`,
+    `<span>抓取中 ${counts.crawling} / 分析中 ${counts.analyzing}</span>`,
     `<span>缓存：搜索 ${currentRound?.cacheHit ? 1 : 0} / 抓取 ${currentRound?.crawlCacheHits ?? 0}</span>`,
     `<span>组内连续低新增 ${group?.consecutiveLowYieldRounds ?? 0}</span>`,
-    `<span>累计 seen ${progress.seenDomains?.length ?? 0}</span>`,
+    `<span>累计 seen ${progress?.seenDomains?.length ?? 0}</span>`,
     stopReason,
   ].join("");
+}
+
+function renderExecutionProgress() {
+  const running = orchestratorSession?.status === "running";
+  const failed = orchestratorSession?.status === "failed";
+  elements.orchestratorProgress.classList.toggle("hidden", !running && !failed);
+  if (!running && !failed) return;
+
+  const runPhase = orchestratorSession.runPhase;
+  renderPipelineStages(failed ? undefined : runPhase);
+  renderPipelineRoundCard(campaign, runPhase);
+
+  if (failed) {
+    elements.orchestratorProgressTitle.textContent = "任务执行失败";
+    elements.orchestratorProgressText.textContent =
+      orchestratorSession.error ?? "未知错误";
+    elements.orchestratorRoundProgress.innerHTML = roundProgressHtml(campaign);
+    return;
+  }
+
+  const phaseText = {
+    planning: "正在准备已批准的查询计划",
+    discovering: "正在搜索、抓取并做本地校验",
+    analyzing: "正在运行公司分析 Agent",
+    deciding: "正在保存本轮结果并判断是否继续",
+    summarizing: "主 Agent 正在汇总报告",
+  };
+  const detail = companyProgressText(campaign);
+  const currentRound = currentDiscoveryRound(campaign);
+  const waitingFirstRound =
+    runPhase === "discovering" &&
+    !currentRound &&
+    !(campaign?.discovery?.progress?.executedQueries > 0);
+  elements.orchestratorProgressTitle.textContent = "正在执行已确认策略";
+  elements.orchestratorProgressText.textContent = waitingFirstRound
+    ? "发现阶段已开始：正在发起第 1 轮 Serper 查询…"
+    : detail
+      ? `${phaseText[runPhase] ?? "正在处理任务"}。${detail}`
+      : phaseText[runPhase] ?? "正在处理任务";
+  elements.orchestratorRoundProgress.innerHTML = roundProgressHtml(campaign);
 }
 
 function renderOrchestrator() {
@@ -885,34 +1571,10 @@ function renderOrchestrator() {
     orchestratorSession.status === "running";
   elements.sendAgentMessageButton.disabled =
     orchestratorSession.status === "running";
-  elements.orchestratorProgress.classList.toggle(
-    "hidden",
-    orchestratorSession.status !== "running",
-  );
-  if (orchestratorSession.status === "running") {
-    const phaseText = {
-      planning: "准备已批准的查询计划",
-      discovering: "Serper 搜索、Python 抓取与本地验证",
-      analyzing: "公司研究、资格复核和触达子 Agent",
-      deciding: "保存本轮结果并判断下一查询",
-      summarizing: "主 Agent 正在分析各子 Agent 报告",
-    };
-    const detail = companyProgressText(campaign);
-    elements.orchestratorProgressText.textContent = detail
-      ? `${phaseText[orchestratorSession.runPhase] ?? "正在处理任务"}。${detail}`
-      : phaseText[orchestratorSession.runPhase] ?? "正在处理任务";
-    elements.orchestratorRoundProgress.innerHTML = roundProgressHtml(campaign);
-  }
-  if (orchestratorSession.status === "failed") {
-    elements.orchestratorProgress.classList.remove("hidden");
-    elements.orchestratorProgressTitle.textContent = "任务执行失败";
-    elements.orchestratorProgressText.textContent = orchestratorSession.error;
-    elements.orchestratorRoundProgress.innerHTML = roundProgressHtml(campaign);
-  } else {
-    elements.orchestratorProgressTitle.textContent = "正在执行已确认策略";
-  }
+  renderExecutionProgress();
   renderOrchestratorMessages();
   renderStrategy();
+  void refreshSessionMarketPolicy({ keepSelection: true });
   renderOrchestratorReport();
 }
 
@@ -932,6 +1594,16 @@ async function createOrchestratorSession() {
     elements.workspace.classList.add("hidden");
     renderOrchestrator();
   } catch (error) {
+    const needsPolicyApproval =
+      /MarketPolicy|市场规则包|草稿/.test(error.message ?? "");
+    if (needsPolicyApproval) {
+      switchStrategyPanel("marketPolicy");
+      await refreshSessionMarketPolicy({
+        preferPending: true,
+        autoSwitch: true,
+      });
+      elements.marketPolicyPanelMessage.textContent = error.message;
+    }
     window.alert(error.message);
   } finally {
     elements.newOrchestratorButton.disabled = false;
@@ -1071,6 +1743,12 @@ async function sendOrchestratorMessage(event) {
     orchestratorSession = result.session;
     orchestratorMessages.push(result.message);
     renderOrchestrator();
+    await refreshSessionMarketPolicy({
+      preferPending: true,
+      autoSwitch: /MarketPolicy|市场规则包|等待用户批准|尚未注册/.test(
+        result.message?.content ?? "",
+      ),
+    });
   } catch (error) {
     const recovered =
       isFetchFailure(error) &&
@@ -1078,6 +1756,14 @@ async function sendOrchestratorMessage(event) {
     if (!recovered) {
       window.alert(error.message);
       await loadOrchestratorSession(sessionId);
+      if (/MarketPolicy|市场规则包|草稿|批准/.test(error.message ?? "")) {
+        switchStrategyPanel("marketPolicy");
+        await refreshSessionMarketPolicy({
+          preferPending: true,
+          autoSwitch: true,
+        });
+        elements.marketPolicyPanelMessage.textContent = error.message;
+      }
     }
   } finally {
     chatRequestPending = false;
@@ -1204,7 +1890,7 @@ function startOrchestratorPolling() {
     } catch {
       clearInterval(orchestratorPollTimer);
     }
-  }, 1500);
+  }, 800);
 }
 
 async function confirmOrchestratorReport() {
@@ -1400,6 +2086,31 @@ elements.approveStrategyButton.addEventListener(
 elements.executeStrategyButton.addEventListener(
   "click",
   executeOrchestratorStrategy,
+);
+elements.strategyPanelTabs.forEach((tab) => {
+  tab.addEventListener("click", () =>
+    switchStrategyPanel(tab.dataset.strategyPanel),
+  );
+});
+elements.marketPolicySelect.addEventListener(
+  "change",
+  selectMarketPolicyFromList,
+);
+elements.saveMarketPolicyButton.addEventListener(
+  "click",
+  saveSessionMarketPolicy,
+);
+elements.reviewMarketPolicyDraftButton.addEventListener(
+  "click",
+  reviewSessionMarketPolicy,
+);
+elements.approveMarketPolicyButton.addEventListener(
+  "click",
+  approveSessionMarketPolicy,
+);
+elements.rejectMarketPolicyButton.addEventListener(
+  "click",
+  rejectSessionMarketPolicy,
 );
 
 elements.themeToggle.addEventListener("click", () => {

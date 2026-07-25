@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CampaignAgentContext } from "../src/agents/agent-runtime.js";
+import {
+  AgentExecutionError,
+  type CampaignAgentContext,
+} from "../src/agents/agent-runtime.js";
 import { DemoAgentRuntime } from "../src/agents/demo-agent-runtime.js";
 import { demoCandidates } from "../src/agents/demo-data.js";
 import type { CompanyCandidate } from "../src/domain.js";
@@ -32,7 +35,25 @@ class TrackingRuntime extends DemoAgentRuntime {
         setTimeout(resolve, 3 + (Number(candidate.id.split("-").at(-1)) % 4)),
       );
       if (candidate.id === "candidate-7") {
-        throw new Error("permanent company failure");
+        throw new AgentExecutionError("permanent company failure", {
+          agent: "CompanyAnalysisAgent",
+          mode: "live",
+          status: "budget_exhausted",
+          steps: ["调用工具：search_company_evidence"],
+          durationMs: 12,
+          usage: {
+            inputTokens: 100,
+            outputTokens: 20,
+            cacheReadTokens: 30,
+            cacheWriteTokens: 0,
+            totalTokens: 150,
+            cost: 0.001,
+          },
+          error: {
+            name: "Error",
+            message: "permanent company failure",
+          },
+        });
       }
       return await super.analyzeCompany(candidate, context);
     } finally {
@@ -84,6 +105,14 @@ test("20 家公司最多并发 5 个 Agent，单项失败不影响其余公司",
     assert.equal(campaign.leads.length, 19);
     assert.equal(campaign.analysisFailures?.length, 1);
     assert.equal(campaign.analysisFailures?.[0]?.candidateId, "candidate-7");
+    assert.equal(
+      campaign.analysisFailures?.[0]?.trace?.status,
+      "budget_exhausted",
+    );
+    assert.equal(
+      campaign.analysisFailures?.[0]?.trace?.usage?.totalTokens,
+      150,
+    );
     assert.ok(
       campaign.leads.every(
         (lead) =>

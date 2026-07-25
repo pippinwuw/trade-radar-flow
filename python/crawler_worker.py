@@ -103,8 +103,12 @@ MAX_HTML_BYTES = bounded_positive_env(
     4_000_000,
     10_000_000,
 )
-MAX_TEXT_LENGTH = 18_000
 MAX_REDIRECTS = 3
+DOMAIN_DEADLINE_SECONDS = bounded_positive_env(
+    "PYTHON_CRAWLER_DOMAIN_DEADLINE_SECONDS",
+    75,
+    110,
+)
 USER_AGENT = "TradeRadarFlow/0.2 (+single-user public company research)"
 
 
@@ -315,8 +319,8 @@ def page_text(soup: BeautifulSoup, enable_regex_cleaning: bool) -> str:
     if preserved_contacts:
         source_text = "\n".join([source_text, *preserved_contacts])
     if enable_regex_cleaning:
-        return regex_clean_lines(source_text)[:MAX_TEXT_LENGTH]
-    return re.sub(r"\s+", " ", source_text).strip()[:MAX_TEXT_LENGTH]
+        return regex_clean_lines(source_text)
+    return re.sub(r"\s+", " ", source_text).strip()
 
 
 def clean_page(
@@ -436,7 +440,18 @@ def crawl(params: dict[str, Any]) -> dict[str, Any]:
         queue = list(links)
         if root_url not in attempted:
             queue.append((110, root_url))
+        deadline_reached = False
         while queue and len(pages) < max_pages:
+            if time.monotonic() - started >= DOMAIN_DEADLINE_SECONDS:
+                deadline_reached = True
+                log_event(
+                    "warn",
+                    "crawl_deadline_reached",
+                    url=first["url"],
+                    pageCount=len(pages),
+                    deadlineSeconds=DOMAIN_DEADLINE_SECONDS,
+                )
+                break
             queue.sort(key=lambda item: (-item[0], item[1]))
             _priority, link = queue.pop(0)
             if link in attempted:
@@ -480,6 +495,14 @@ def crawl(params: dict[str, Any]) -> dict[str, Any]:
         "pages": pages,
         "contactCandidates": extract_contacts(pages),
         "searchHit": search_hit,
+        "crawlWarnings": (
+            [
+                f"Reached safe crawl deadline after "
+                f"{DOMAIN_DEADLINE_SECONDS}s; retained partial pages."
+            ]
+            if deadline_reached
+            else []
+        ),
     }
     log_event(
         "info",
@@ -489,6 +512,7 @@ def crawl(params: dict[str, Any]) -> dict[str, Any]:
         contactCandidateCount=len(result["contactCandidates"]),
         regexCleaning=enable_regex_cleaning,
         durationMs=round((time.monotonic() - started) * 1000),
+        deadlineReached=deadline_reached,
     )
     return result
 

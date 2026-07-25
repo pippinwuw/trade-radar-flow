@@ -153,7 +153,15 @@ export function locateVerbatimQuote(
   return pageText.slice(start, last + 1);
 }
 
-function splitExactSnippets(text: string, maxLength = 320): string[] {
+export const EVIDENCE_CHUNK_MAX_LENGTH = 960;
+export const EVIDENCE_CHUNK_MIN_LENGTH = 480;
+export const EVIDENCE_CHUNK_OVERLAP = 120;
+
+function splitExactSnippets(
+  text: string,
+  maxLength = EVIDENCE_CHUNK_MAX_LENGTH,
+  minLength = Math.min(EVIDENCE_CHUNK_MIN_LENGTH, maxLength),
+): string[] {
   const snippets: string[] = [];
   let cursor = 0;
   while (cursor < text.length) {
@@ -161,36 +169,38 @@ function splitExactSnippets(text: string, maxLength = 320): string[] {
     if (cursor >= text.length) break;
     const limit = Math.min(text.length, cursor + maxLength);
     let end = limit;
-    for (let index = cursor; index < limit; index += 1) {
+    const minimumEnd = Math.min(limit, cursor + minLength);
+    for (let index = limit - 1; index >= minimumEnd; index -= 1) {
       if (/[\n.!?。！？]/u.test(text[index] ?? "")) {
-        const candidateEnd = index + 1;
-        if (candidateEnd - cursor >= 40) {
-          end = candidateEnd;
-          break;
-        }
+        end = index + 1;
+        break;
       }
     }
     if (end === limit && end < text.length) {
       const whitespace = text.lastIndexOf(" ", end);
-      if (whitespace > cursor + Math.floor(maxLength / 2)) end = whitespace;
+      if (whitespace >= minimumEnd) end = whitespace;
     }
     const snippet = text.slice(cursor, end).trimEnd();
     if (snippet) snippets.push(snippet);
-    cursor = Math.max(end, cursor + 1);
+    if (end >= text.length) break;
+    cursor = Math.max(end - EVIDENCE_CHUNK_OVERLAP, cursor + 1);
   }
   return snippets;
 }
 
 export function buildEvidenceCatalog(
   pages: readonly PageSnapshot[],
+  excludedPageIndexes: ReadonlySet<number> = new Set(),
 ): EvidenceSnippet[] {
   return pages.flatMap((page, pageIndex) =>
-    splitExactSnippets(page.text).map((text, snippetIndex) => ({
-      ref: `p${pageIndex}-s${snippetIndex}`,
-      pageIndex,
-      url: page.url,
-      text,
-    })),
+    excludedPageIndexes.has(pageIndex) || !page.text.trim()
+      ? []
+      : splitExactSnippets(page.text).map((text, snippetIndex) => ({
+          ref: `p${pageIndex}-s${snippetIndex}`,
+          pageIndex,
+          url: page.url,
+          text,
+        })),
   );
 }
 
@@ -245,6 +255,56 @@ export function validateAndNormalizeCompanyAnalysisV2(
       }
       return [id];
     });
+  const selectedFactRefs = new Set(
+    submitted.research.facts.map((fact) => fact.evidenceRef),
+  );
+  const qualificationRefs = new Set(submitted.qualification.evidenceRefs);
+  const hasSelectedFact = (kind: CompanyAnalysisSubmissionV2["research"]["facts"][number]["kind"]) =>
+    submitted.research.facts.some(
+      (fact) =>
+        fact.kind === kind &&
+        selectedFactRefs.has(fact.evidenceRef) &&
+        readEvidenceRefs.has(fact.evidenceRef),
+    );
+  const hasQualificationFact = (
+    kind: CompanyAnalysisSubmissionV2["research"]["facts"][number]["kind"],
+  ) =>
+    submitted.research.facts.some(
+      (fact) =>
+        fact.kind === kind &&
+        qualificationRefs.has(fact.evidenceRef) &&
+        readEvidenceRefs.has(fact.evidenceRef),
+    );
+  if (submitted.research.canonicalName.trim() && !hasSelectedFact("identity")) {
+    issues.push("canonicalName 缺少 identity 官网事实；无法确认时必须留空");
+  }
+  if (submitted.research.products.length > 0 && !hasSelectedFact("product")) {
+    issues.push("products 缺少 product 官网事实；无法确认时必须返回空数组");
+  }
+  if (
+    submitted.qualification.businessRole !== "Unknown" &&
+    !hasQualificationFact("business_role")
+  ) {
+    issues.push("businessRole 缺少 qualification 引用的 business_role 事实；无法确认时必须为 Unknown");
+  }
+  if (
+    submitted.qualification.importCapability !== "Unknown" &&
+    !hasQualificationFact("scale")
+  ) {
+    issues.push("importCapability 缺少 qualification 引用的 scale/import 事实；无法确认时必须为 Unknown");
+  }
+  if (
+    submitted.qualification.productFitScore > 0 &&
+    !hasQualificationFact("product")
+  ) {
+    issues.push("productFitScore 大于 0 但缺少 qualification 引用的 product 事实");
+  }
+  if (
+    submitted.qualification.scaleScore > 0 &&
+    !hasQualificationFact("scale")
+  ) {
+    issues.push("scaleScore 大于 0 但缺少 qualification 引用的 scale 事实");
+  }
   const normalizedContacts: ResolvedContact[] =
     submitted.research.contacts.flatMap((selection) => {
       const contact = contactByRef.get(selection.contactRef);

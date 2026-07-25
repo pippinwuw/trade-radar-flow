@@ -52,6 +52,23 @@ class PageTextTests(unittest.TestCase):
         self.assertIn("We use cookies", text)
         self.assertIn("Primary company content", text)
 
+    def test_page_text_preserves_content_beyond_legacy_18000_limit(self) -> None:
+        tail_marker = "VERIFIED_PAGE_TAIL_IMPORT_EVIDENCE"
+        soup = BeautifulSoup(
+            f"""
+            <html><body><main>
+              <p>{"industrial fabric content " * 900}</p>
+              <p>{tail_marker}</p>
+            </main></body></html>
+            """,
+            "html.parser",
+        )
+
+        text = page_text(soup, True)
+
+        self.assertGreater(len(text), 18_000)
+        self.assertIn(tail_marker, text)
+
 
 if __name__ == "__main__":
     unittest.main()

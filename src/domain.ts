@@ -104,6 +104,12 @@ export interface QueryGroupProgress {
   lastNewDomainRate: number;
 }
 
+export type DiscoveryRoundPhase =
+  | "searching"
+  | "crawling"
+  | "analyzing"
+  | "completed";
+
 export interface DiscoveryRound {
   index: number;
   queryIndex: number;
@@ -111,7 +117,10 @@ export interface DiscoveryRound {
   baseQuery: SearchQuery;
   effectiveQuery: SearchQuery;
   filters: SearchExclusionFilter[];
+  /** Round lifecycle: in-progress rounds stay analyzing until completeRound. */
   status: "analyzing" | "completed";
+  /** Finer in-round stage for live progress UI. */
+  phase?: DiscoveryRoundPhase;
   rawHitCount: number;
   duplicateDomainCount: number;
   excludedHitCount: number;
@@ -204,6 +213,7 @@ export interface CompanyCandidate {
   contactCandidates: ContactCandidate[];
   searchHit?: SearchHit;
   crawlCacheHit?: boolean;
+  crawlWarnings?: string[];
   countryValidation?: CountryValidation;
   contactValidations?: ContactValidation[];
 }
@@ -355,6 +365,10 @@ export interface AgentTrace {
     key: string;
     sourceLeadId?: string;
   };
+  error?: {
+    name: string;
+    message: string;
+  };
 }
 
 export type LeadStatus =
@@ -380,6 +394,7 @@ export interface CompanyAnalysisFailure {
   stage: "analysis";
   message: string;
   failedAt: string;
+  trace?: AgentTrace;
 }
 
 export interface CampaignResult {

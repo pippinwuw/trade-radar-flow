@@ -83,11 +83,11 @@ const EXCLUDED_DOMAINS = new Set([
 ]);
 
 const DIRECTORY_SIGNAL =
-  /\b(?:yellow\s*pages|business\s+directory|company\s+directory|b2b\s+directory|supplier\s+directory|buying\s+leads?)\b/i;
+  /\b(?:yellow\s*pages|business\s+directory|company\s+directory|b2b\s+directory|supplier\s+directory|buying\s+leads?|katalog\s+firm|baza\s+firm|spis\s+firm|portal\s+firm)\b/i;
 const NON_COMPANY_CONTENT_SIGNAL =
-  /\b(?:market\s+(?:research|report|size|forecast)|industry\s+report|trade\s+data|import\s+data|export\s+data|product\s+listing|consumer\s+marketplace)\b/i;
+  /\b(?:market\s+(?:research|report|size|forecast)|industry\s+report|trade\s+data|import\s+data|export\s+data|product\s+listing|consumer\s+marketplace|classified\s+ads?|translation\s+dictionary|portal\s+ogłoszeniowy|serwis\s+ogłoszeniowy|ogłoszenia\s+lokalne|słownik\s+internetowy)\b/i;
 const PLATFORM_DOMAIN_SIGNAL =
-  /(?:^|\.)(?:[^.]*yellowpages[^.]*|[^.]*businessdirectory[^.]*)\.[a-z]{2,}$|^(?:amazon|ebay|ubuy)\./i;
+  /(?:^|\.)(?:[^.]*yellowpages[^.]*|[^.]*businessdirectory[^.]*|kompass|europages|industrystock|panoramafirm|polskiefirmy|sprzedajemy|oferteo|linguee)\.[a-z.]{2,}$|^(?:amazon|ebay|ubuy)\./i;
 const NON_HTML_PATH_SIGNAL =
   /\.(?:pdf|docx?|xlsx?|pptx?|zip|rar|7z)(?:$|[?#])/i;
 
@@ -183,6 +183,10 @@ export interface DiscoveryRoundOptions {
   client?: SerperClient;
   excludedDomains?: string[];
   crawl?: typeof crawlCandidate;
+  onProgress?: (snapshot: {
+    round: DiscoveryRound;
+    companies: CompanyProcessingRecord[];
+  }) => void | Promise<void>;
 }
 
 export interface DiscoveryRoundResult {
@@ -205,11 +209,45 @@ export async function executeDiscoveryRound({
   client = new SerperClient(),
   excludedDomains = [],
   crawl = crawlCandidate,
+  onProgress,
 }: DiscoveryRoundOptions): Promise<DiscoveryRoundResult> {
   const started = performance.now();
   const startedAt = new Date().toISOString();
   const groupId = resolveQueryGroupId(query, queryIndex);
   const effective = buildEffectiveSearchQuery(query, progress);
+  const round: DiscoveryRound = {
+    index: roundIndex,
+    queryIndex,
+    groupId,
+    baseQuery: query,
+    effectiveQuery: effective.query,
+    filters: effective.filters,
+    status: "analyzing",
+    phase: "searching",
+    rawHitCount: 0,
+    duplicateDomainCount: 0,
+    excludedHitCount: 0,
+    newDomainCount: 0,
+    newDomains: [],
+    crawlSucceeded: 0,
+    crawlFailed: 0,
+    countryRejected: 0,
+    crawlCacheHits: 0,
+    analysisSucceeded: 0,
+    analysisFailed: 0,
+    cacheHit: false,
+    serpRequests: 0,
+    startedAt,
+  };
+  let companies: CompanyProcessingRecord[] = [];
+  const emitProgress = async (): Promise<void> => {
+    if (!onProgress) return;
+    await onProgress({
+      round: { ...round },
+      companies: companies.map((company) => ({ ...company })),
+    });
+  };
+  await emitProgress();
   logger.info("discovery.round.started", undefined, {
     roundIndex,
     queryIndex,
@@ -262,6 +300,22 @@ export async function executeDiscoveryRound({
     progress.domainRepeatCounts[domain] ??= 0;
   }
   progress.seenDomains = [...seenDomains];
+  round.rawHitCount = response.hits.length;
+  round.duplicateDomainCount = duplicateDomainCount;
+  round.excludedHitCount = excludedHitCount;
+  round.newDomainCount = newHits.length;
+  round.newDomains = newHits.map((hit) => hit.domain);
+  round.cacheHit = response.cacheHit;
+  round.serpRequests = response.requestCount;
+  round.phase = "crawling";
+  companies = newHits.map((hit) => ({
+    domain: hit.domain,
+    url: hit.link,
+    roundIndex,
+    status: "pending",
+    retryCount: 0,
+  }));
+  await emitProgress();
 
   const crawlConcurrency = positiveIntegerFromEnv(
     "PYTHON_CRAWLER_WORKERS",
@@ -273,19 +327,13 @@ export async function executeDiscoveryRound({
       ? Math.floor(configuredCrawlRetries)
       : 2;
   const errors: DiscoveryRun["errors"] = [];
-  const companies: CompanyProcessingRecord[] = newHits.map((hit) => ({
-    domain: hit.domain,
-    url: hit.link,
-    roundIndex,
-    status: "pending",
-    retryCount: 0,
-  }));
   const companyByDomain = new Map(
     companies.map((company) => [company.domain, company]),
   );
   let successfulCrawls = 0;
   let crawlCacheHits = 0;
   let countryRejected = 0;
+  let lastProgressAt = 0;
   const crawled = await mapWithConcurrency(
     newHits,
     crawlConcurrency,
@@ -378,6 +426,16 @@ export async function executeDiscoveryRound({
           url: hit.link,
         });
         return undefined;
+      } finally {
+        round.crawlSucceeded = successfulCrawls;
+        round.crawlFailed = errors.length;
+        round.countryRejected = countryRejected;
+        round.crawlCacheHits = crawlCacheHits;
+        const nowMs = performance.now();
+        if (nowMs - lastProgressAt >= 800) {
+          lastProgressAt = nowMs;
+          await emitProgress();
+        }
       }
     },
   );
@@ -386,29 +444,12 @@ export async function executeDiscoveryRound({
   );
   progress.nextQueryIndex = queryIndex + 1;
   progress.executedQueries += 1;
-  const round: DiscoveryRound = {
-    index: roundIndex,
-    queryIndex,
-    groupId,
-    baseQuery: query,
-    effectiveQuery: effective.query,
-    filters: effective.filters,
-    status: "analyzing",
-    rawHitCount: response.hits.length,
-    duplicateDomainCount,
-    excludedHitCount,
-    newDomainCount: newHits.length,
-    newDomains: newHits.map((hit) => hit.domain),
-    crawlSucceeded: successfulCrawls,
-    crawlFailed: errors.length,
-    countryRejected,
-    crawlCacheHits,
-    analysisSucceeded: 0,
-    analysisFailed: 0,
-    cacheHit: response.cacheHit,
-    serpRequests: response.requestCount,
-    startedAt,
-  };
+  round.crawlSucceeded = successfulCrawls;
+  round.crawlFailed = errors.length;
+  round.countryRejected = countryRejected;
+  round.crawlCacheHits = crawlCacheHits;
+  round.phase = "analyzing";
+  await emitProgress();
   logger.info("discovery.round.completed", undefined, {
     roundIndex,
     queryIndex,

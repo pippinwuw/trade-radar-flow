@@ -102,11 +102,11 @@ test("证据引用由服务端恢复逐字原文、URL、联系人来源和 keyE
   );
   assert.equal(
     normalized.research.evidence[0]?.quote,
-    "Example Trading\u00a0LLC distributes industrial tarpaulins.",
+    candidate.pages[0]?.text,
   );
   assert.equal(
     normalized.outreach.keyEvidence[0],
-    "Example Trading\u00a0LLC distributes industrial tarpaulins.",
+    candidate.pages[0]?.text,
   );
   assert.equal(
     normalized.research.evidence[0]?.sourceUrl,

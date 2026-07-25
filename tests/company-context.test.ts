@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCompanyContext } from "../src/analysis/company-context.js";
+import {
+  buildCompanyContext,
+  pageCompanyEvidenceSlot,
+} from "../src/analysis/company-context.js";
 import { compileContext } from "../src/analysis/context-manager.js";
 import { demoCandidates } from "../src/agents/demo-data.js";
 import { buildCampaignAgentContext } from "../src/discovery/query-planner.js";
@@ -9,6 +12,8 @@ import { AppDatabase } from "../src/storage/database.js";
 import {
   buildContactCatalog,
   buildEvidenceCatalog,
+  EVIDENCE_CHUNK_MAX_LENGTH,
+  EVIDENCE_CHUNK_MIN_LENGTH,
   validateAndNormalizeCompanyAnalysisV2,
   type CompanyAnalysisSubmissionV2,
 } from "../src/validation/company-analysis-validator.js";
@@ -96,14 +101,125 @@ test("CompanyContextBuilder 全文索引页面尾部并区分输入与决策 fin
   assert.notEqual(first.cacheKey, second.cacheKey);
 });
 
+test("证据索引使用较大连续 chunk，并在建索引前跳过空页和重复页", () => {
+  const source = demoCandidates[0];
+  assert.ok(source);
+  const candidate = structuredClone(source);
+  const paragraph = `${"PVC coated industrial fabric supports warehouse distribution. ".repeat(18)}\n`;
+  candidate.pages = [
+    {
+      url: candidate.homepage,
+      title: "Home",
+      text: paragraph.repeat(8),
+    },
+    {
+      url: `${candidate.homepage}/duplicate`,
+      title: "Duplicate",
+      text: paragraph.repeat(8),
+    },
+    {
+      url: `${candidate.homepage}/empty`,
+      title: "Empty",
+      text: "   ",
+    },
+  ];
+  const catalog = buildEvidenceCatalog(candidate.pages, new Set([1, 2]));
+
+  assert.ok(catalog.length > 1);
+  assert.ok(catalog.every((item) => item.pageIndex === 0));
+  assert.ok(
+    catalog.slice(0, -1).every(
+      (item) =>
+        item.text.length >= EVIDENCE_CHUNK_MIN_LENGTH &&
+        item.text.length <= EVIDENCE_CHUNK_MAX_LENGTH,
+    ),
+  );
+});
+
+test("字段证据支持更大的初始包和独立 cursor 分页", async () => {
+  const source = demoCandidates[0];
+  assert.ok(source);
+  const candidate = structuredClone(source);
+  candidate.pages = [
+    {
+      url: candidate.homepage,
+      title: "Products and distribution",
+      text: Array.from(
+        { length: 80 },
+        (_, index) =>
+          `PVC tarpaulin product ${index} distributor warehouse import global sourcing company Poland. ` +
+          "This official product description is intended for industrial buyers and commercial applications.",
+      ).join("\n"),
+    },
+  ];
+  const strategy = await createDefaultStrategy({
+    product: "PVC tarpaulin",
+    country: "United Arab Emirates",
+    language: "English",
+  });
+  const context = await buildCampaignAgentContext(
+    {
+      product: strategy.product,
+      country: strategy.country,
+      language: strategy.language,
+    },
+    strategy,
+  );
+  const build = buildCompanyContext(candidate, context, {
+    provider: "test",
+    id: "test-model",
+  });
+
+  assert.ok(build.evidencePack.productFit.length > 10);
+  const firstPage = pageCompanyEvidenceSlot(build, "productFit", 0, 12);
+  assert.equal(firstPage.items.length, 12);
+  assert.equal(firstPage.nextCursor, 12);
+  const secondPage = pageCompanyEvidenceSlot(
+    build,
+    "productFit",
+    firstPage.nextCursor ?? 0,
+    12,
+  );
+  assert.ok(secondPage.items.length > 0);
+  assert.notEqual(
+    firstPage.items[0]?.evidenceRef,
+    secondPage.items[0]?.evidenceRef,
+  );
+});
+
 test("v2 公司提交由系统生成 company/evidence 字段并隔离 contactRef", () => {
   const source = demoCandidates[0];
   assert.ok(source);
   const candidate = structuredClone(source);
+  candidate.pages = [
+    {
+      url: candidate.homepage,
+      title: "About",
+      text: "Example Industrial LLC is the official company identity.",
+    },
+    {
+      url: `${candidate.homepage}/products`,
+      title: "Products",
+      text: "The company supplies PVC tarpaulin for industrial applications.",
+    },
+    {
+      url: `${candidate.homepage}/distribution`,
+      title: "Distribution",
+      text: "The company operates as a commercial distributor.",
+    },
+    {
+      url: `${candidate.homepage}/scale`,
+      title: "Scale",
+      text: "The company maintains warehouse distribution and import operations.",
+    },
+  ];
   const catalog = buildEvidenceCatalog(candidate.pages);
   const evidenceRef = catalog[0]?.ref;
+  const productRef = catalog[1]?.ref;
+  const roleRef = catalog[2]?.ref;
+  const scaleRef = catalog[3]?.ref;
   const contactRef = buildContactCatalog(candidate.contactCandidates)[0]?.ref;
-  assert.ok(evidenceRef && contactRef);
+  assert.ok(evidenceRef && productRef && roleRef && scaleRef && contactRef);
   const submission: CompanyAnalysisSubmissionV2 = {
     research: {
       canonicalName: "Example",
@@ -118,6 +234,27 @@ test("v2 公司提交由系统生成 company/evidence 字段并隔离 contactRef
           evidenceRef,
           confidence: 0.9,
         },
+        {
+          kind: "product",
+          label: "product",
+          value: "PVC tarpaulin",
+          evidenceRef: productRef,
+          confidence: 0.9,
+        },
+        {
+          kind: "business_role",
+          label: "role",
+          value: "Distributor",
+          evidenceRef: roleRef,
+          confidence: 0.9,
+        },
+        {
+          kind: "scale",
+          label: "scale",
+          value: "Commercial distribution",
+          evidenceRef: scaleRef,
+          confidence: 0.8,
+        },
       ],
       missingInformation: [],
     },
@@ -129,7 +266,7 @@ test("v2 公司提交由系统生成 company/evidence 字段并隔离 contactRef
       importCapability: "Medium",
       confidence: 0.9,
       reasons: ["官网证据支持"],
-      evidenceRefs: [evidenceRef],
+      evidenceRefs: [productRef, roleRef, scaleRef],
       missingInformation: [],
       riskAssessment: [],
     },
@@ -144,13 +281,13 @@ test("v2 公司提交由系统生成 company/evidence 字段并隔离 contactRef
       emailSubject: "Subject",
       emailBody: "Body",
       whatsappBody: "Message",
-      evidenceRefs: [evidenceRef],
+      evidenceRefs: [productRef],
     },
   };
   const result = validateAndNormalizeCompanyAnalysisV2(
     submission,
     candidate,
-    new Set([evidenceRef]),
+    new Set([evidenceRef, productRef, roleRef, scaleRef]),
     catalog,
   );
 

@@ -29,6 +29,7 @@ import type {
   CampaignResult,
   CampaignStrategy,
   CompanyCandidate,
+  CompanyProcessingRecord,
   DiscoveryRound,
   DiscoveryRun,
   LeadRecord,
@@ -37,6 +38,7 @@ import type {
   SearchPlan,
 } from "./domain.js";
 import { PiAgentRuntime } from "./agents/pi-agent-runtime.js";
+import { AgentExecutionError } from "./agents/agent-runtime.js";
 import { getDatabase } from "./storage/database.js";
 import { logger, runWithLogContext } from "./logging/logger.js";
 import { validateContactCandidates } from "./validation/contact-validator.js";
@@ -320,13 +322,22 @@ export async function runCampaign(
             analysisStartedAt.getTime();
         }
       } catch (error) {
+        const failureTrace =
+          error instanceof AgentExecutionError ? error.trace : undefined;
         analysisFailures.push({
           candidateId: candidate.id,
           domain: candidate.domain,
           stage: "analysis",
           message: error instanceof Error ? error.message : String(error),
           failedAt: new Date().toISOString(),
+          trace: failureTrace,
         });
+        if (failureTrace) {
+          logger.info("agent.trace.recorded", undefined, failureTrace, {
+            agent: failureTrace.agent,
+            campaignId,
+          });
+        }
         if (companyProgress) {
           companyProgress.status = "analysis_failed";
           companyProgress.analysisCompletedAt = new Date().toISOString();
@@ -573,6 +584,7 @@ function completeRound(
   round.analysisSucceeded = roundLeads.length;
   round.analysisFailed = roundFailures.length;
   round.status = "completed";
+  round.phase = "completed";
   round.completedAt = new Date().toISOString();
   const newDomainRate =
     round.rawHitCount > 0
@@ -721,23 +733,66 @@ export async function runApprovedStrategy(
     (round) => round.status === "analyzing",
   );
   if (unfinishedRound) {
-    onPhase?.("analyzing");
-    campaign = await runCampaign(
-      context.input,
-      candidatesForRound(campaign, unfinishedRound),
-      {
-        campaignId: id,
-        searchMode: "serper",
-        discovery,
-        context,
-        runtime: activeRuntime,
-        finalize: false,
-      },
-    );
-    completeRound(campaign, unfinishedRound, strategy);
-    onPhase?.("deciding");
-    database.saveCampaign(campaign);
+    const phase = unfinishedRound.phase ?? "analyzing";
+    if (phase === "searching" || phase === "crawling") {
+      // Mid-discovery interruption: drop incomplete round and redo that query.
+      discovery.rounds = discovery.rounds?.filter(
+        (round) => round.index !== unfinishedRound.index,
+      );
+      progress.nextQueryIndex = Math.min(
+        progress.nextQueryIndex,
+        unfinishedRound.queryIndex,
+      );
+      database.saveCampaign(campaign);
+    } else {
+      onPhase?.("analyzing");
+      unfinishedRound.phase = "analyzing";
+      database.saveCampaign(campaign);
+      campaign = await runCampaign(
+        context.input,
+        candidatesForRound(campaign, unfinishedRound),
+        {
+          campaignId: id,
+          searchMode: "serper",
+          discovery,
+          context,
+          runtime: activeRuntime,
+          finalize: false,
+        },
+      );
+      completeRound(campaign, unfinishedRound, strategy);
+      onPhase?.("deciding");
+      database.saveCampaign(campaign);
+    }
   }
+
+  const upsertRoundProgress = (
+    round: DiscoveryRound,
+    roundCompanies: CompanyProcessingRecord[],
+  ): void => {
+    const rounds = discovery.rounds ?? [];
+    const existingIndex = rounds.findIndex(
+      (item) => item.index === round.index,
+    );
+    if (existingIndex >= 0) rounds[existingIndex] = round;
+    else rounds.push(round);
+    discovery.rounds = rounds;
+    const companyMap = new Map(
+      (discovery.companies ?? []).map((company) => [
+        `${company.roundIndex ?? ""}:${company.domain.toLowerCase()}`,
+        company,
+      ]),
+    );
+    for (const company of roundCompanies) {
+      companyMap.set(
+        `${company.roundIndex ?? ""}:${company.domain.toLowerCase()}`,
+        company,
+      );
+    }
+    discovery.companies = [...companyMap.values()];
+    campaign.completedAt = new Date().toISOString();
+    database.saveCampaign(campaign);
+  };
 
   while (
     !progress.stopReason &&
@@ -761,6 +816,9 @@ export async function runApprovedStrategy(
         client: executionOptions.client,
         excludedDomains: strategy.exclusions.domains,
         crawl: executionOptions.crawl,
+        onProgress: ({ round, companies: roundCompanies }) => {
+          upsertRoundProgress(round, roundCompanies);
+        },
       });
     } catch (error) {
       progress.stopReason = "failed";
@@ -773,13 +831,14 @@ export async function runApprovedStrategy(
     discovery.errors.push(...roundResult.errors);
     discovery.serpRequests += roundResult.round.serpRequests;
     discovery.cacheHits += roundResult.round.cacheHit ? 1 : 0;
-    discovery.companies?.push(...roundResult.companies);
-    discovery.rounds?.push(roundResult.round);
+    upsertRoundProgress(roundResult.round, roundResult.companies);
     mergeCandidateQueue(campaign, roundResult.candidates);
     campaign.completedAt = new Date().toISOString();
     database.saveCampaign(campaign);
 
     onPhase?.("analyzing");
+    roundResult.round.phase = "analyzing";
+    database.saveCampaign(campaign);
     campaign = await runCampaign(context.input, roundResult.candidates, {
       campaignId: id,
       searchMode: "serper",

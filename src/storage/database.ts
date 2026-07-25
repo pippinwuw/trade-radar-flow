@@ -386,6 +386,15 @@ export class AppDatabase {
           );
         }
       }
+      for (const failure of campaign.analysisFailures ?? []) {
+        if (!failure.trace) continue;
+        insertTrace.run(
+          campaign.id,
+          `failure:${failure.candidateId}`,
+          failure.trace.agent,
+          JSON.stringify(failure.trace),
+        );
+      }
       const snapshotCandidates =
         campaign.candidateQueue ?? campaign.leads.map((lead) => lead.candidate);
       const savedPages = new Set<string>();

@@ -370,7 +370,7 @@ h1 {
 }
 
 .strategy-card-header {
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .strategy-card-header > span {
@@ -378,9 +378,50 @@ h1 {
   font-size: 12px;
 }
 
+.strategy-panel-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.strategy-panel-tabs .tab {
+  position: relative;
+}
+
+.strategy-panel-tabs .tab[data-pending="true"]::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 .strategy-form {
   display: grid;
   gap: 12px;
+}
+
+.market-policy-meta,
+.market-policy-hint,
+.market-policy-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.market-policy-meta {
+  padding: 10px 12px;
+  border: 1px solid var(--stroke);
+  background: var(--surface-alt);
+}
+
+.market-policy-message {
+  min-height: 1.2em;
 }
 
 .strategy-form > label,
@@ -436,8 +477,16 @@ h1 {
 .orchestrator-progress {
   padding: 18px 22px;
   border-top: 1px solid var(--stroke);
+}
+
+.pipeline-progress {
+  display: grid;
+  gap: 14px;
+}
+
+.pipeline-progress-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
 }
 
@@ -446,11 +495,104 @@ h1 {
   color: var(--muted);
 }
 
+.pipeline-stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pipeline-stage {
+  position: relative;
+  padding: 10px 10px 12px;
+  border: 1px solid var(--stroke);
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pipeline-stage strong {
+  display: block;
+  margin-bottom: 2px;
+  color: inherit;
+  font-size: 12px;
+}
+
+.pipeline-stage.done {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke));
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.pipeline-stage.current {
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.pipeline-stage.current::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.pipeline-round-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--stroke);
+  background: var(--surface-alt);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.pipeline-round-card strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.pipeline-round-card .query-line {
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.pipeline-substeps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pipeline-substep {
+  padding: 3px 8px;
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  font-size: 11px;
+}
+
+.pipeline-substep.done {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--stroke));
+  color: var(--ink);
+}
+
+.pipeline-substep.current {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .round-progress {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 8px;
 }
 
 .round-progress span {
@@ -459,6 +601,12 @@ h1 {
   background: var(--surface-muted);
   color: var(--muted);
   font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .pipeline-stages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .orchestrator-report {

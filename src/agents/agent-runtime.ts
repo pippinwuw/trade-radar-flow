@@ -14,6 +14,16 @@ export interface AgentResult<T> {
   trace: AgentTrace;
 }
 
+export class AgentExecutionError extends Error {
+  readonly trace: AgentTrace;
+
+  constructor(message: string, trace: AgentTrace, cause?: unknown) {
+    super(message, { cause });
+    this.name = "AgentExecutionError";
+    this.trace = trace;
+  }
+}
+
 export interface AgentRuntime {
   readonly mode: "demo" | "live";
   planSearch(

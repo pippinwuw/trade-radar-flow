@@ -104,54 +104,131 @@
           <aside class="strategy-card">
             <div class="strategy-card-header">
               <div>
-                <p class="eyebrow">可编辑策略模板</p>
-                <h3>搜索与分析方案</h3>
+                <p class="eyebrow">会话侧栏</p>
+                <h3>策略与市场规则</h3>
               </div>
               <span id="strategyVersion">v -</span>
             </div>
-            <div id="strategyEmpty" class="empty-strategy">
-              创建会话后将在这里显示基础模板。
+            <div class="strategy-panel-tabs" role="tablist" aria-label="策略与市场规则">
+              <button
+                class="tab active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                data-strategy-panel="strategy"
+              >
+                可编辑策略模板
+              </button>
+              <button
+                class="tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                data-strategy-panel="marketPolicy"
+                id="marketPolicyTabButton"
+              >
+                市场查询规则
+              </button>
             </div>
-            <form class="strategy-form hidden" id="strategyForm">
-              <label>任务目标<textarea id="strategyObjective"></textarea></label>
-              <label>目标客户角色<input id="strategyRoles" /></label>
-              <label>行业 / 用途<input id="strategyIndustries" /></label>
-              <label>核心关键词<input id="strategyKeywords" /></label>
-              <label>同义词 / 补充词<input id="strategyAlternatives" /></label>
-              <label>当地语言关键词<input id="strategyLocalKeywords" /></label>
-              <label>重点城市<input id="strategyCities" /></label>
-              <label>排除词<input id="strategyExclusions" /></label>
-              <label>排除域名<input id="strategyDomains" /></label>
-              <div class="budget-grid">
-                <label>查询数<input id="strategyMaxQueries" type="number" min="1" /></label>
-                <label>每条结果<input id="strategyResultsPerQuery" type="number" min="100" max="100" readonly /></label>
-                <label>每站页面数<input id="strategyMaxPages" type="number" min="1" /></label>
-                <label>国家阈值<input id="strategyCountryScore" type="number" min="0" max="100" /></label>
-                <label>低新增域名数<input id="strategyLowYieldDomains" type="number" min="0" /></label>
-                <label>低新增率<input id="strategyLowYieldRate" type="number" min="0" max="1" step="0.01" /></label>
-                <label>连续低新增轮数<input id="strategyLowYieldRounds" type="number" min="1" /></label>
+
+            <div id="strategyPanel">
+              <div id="strategyEmpty" class="empty-strategy">
+                创建会话后将在这里显示基础模板。
               </div>
-              <div class="custom-strategy-sections" id="customStrategySections"></div>
-              <div class="strategy-budget" id="strategyBudget"></div>
-              <div class="strategy-actions">
-                <button class="button secondary" type="button" id="saveStrategyButton">
-                  保存模板修改
-                </button>
-                <button class="button primary" type="button" id="approveStrategyButton">
-                  确认策略
-                </button>
-                <button class="button primary hidden" type="button" id="executeStrategyButton">
-                  开始执行
-                </button>
+              <form class="strategy-form hidden" id="strategyForm">
+                <label>任务目标<textarea id="strategyObjective"></textarea></label>
+                <label>目标客户角色<input id="strategyRoles" /></label>
+                <label>行业 / 用途<input id="strategyIndustries" /></label>
+                <label>核心关键词<input id="strategyKeywords" /></label>
+                <label>同义词 / 补充词<input id="strategyAlternatives" /></label>
+                <label>当地语言关键词<input id="strategyLocalKeywords" /></label>
+                <label>重点城市<input id="strategyCities" /></label>
+                <label>排除词<input id="strategyExclusions" /></label>
+                <label>排除域名<input id="strategyDomains" /></label>
+                <div class="budget-grid">
+                  <label>查询数<input id="strategyMaxQueries" type="number" min="1" /></label>
+                  <label>每条结果<input id="strategyResultsPerQuery" type="number" min="100" max="100" readonly /></label>
+                  <label>每站页面数<input id="strategyMaxPages" type="number" min="1" /></label>
+                  <label>国家阈值<input id="strategyCountryScore" type="number" min="0" max="100" /></label>
+                  <label>低新增域名数<input id="strategyLowYieldDomains" type="number" min="0" /></label>
+                  <label>低新增率<input id="strategyLowYieldRate" type="number" min="0" max="1" step="0.01" /></label>
+                  <label>连续低新增轮数<input id="strategyLowYieldRounds" type="number" min="1" /></label>
+                </div>
+                <div class="custom-strategy-sections" id="customStrategySections"></div>
+                <div class="strategy-budget" id="strategyBudget"></div>
+                <div class="strategy-actions">
+                  <button class="button secondary" type="button" id="saveStrategyButton">
+                    保存模板修改
+                  </button>
+                  <button class="button primary" type="button" id="approveStrategyButton">
+                    确认策略
+                  </button>
+                  <button class="button primary hidden" type="button" id="executeStrategyButton">
+                    开始执行
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div id="marketPolicyPanel" class="hidden">
+              <div id="marketPolicyEmpty" class="empty-strategy">
+                创建会话或切换到新国家后，这里会显示待审阅的 MarketPolicy 草稿，用于编辑查询规则并批准生效。
               </div>
-            </form>
+              <form class="strategy-form hidden" id="marketPolicyForm">
+                <label>
+                  待处理版本
+                  <select id="marketPolicySelect"></select>
+                </label>
+                <p class="market-policy-meta" id="marketPolicyMeta"></p>
+                <p class="market-policy-hint">
+                  新国家生成的规则先在此审阅批准；批准后主 Agent 才能绑定该市场并继续搜索预览。
+                </p>
+                <label>Market ID<input id="mpMarketId" readonly /></label>
+                <label>默认触达语言<input id="mpDefaultLanguage" /></label>
+                <label>搜索语言（逗号分隔）<input id="mpLanguages" /></label>
+                <label>买家角色词（逗号分隔）<input id="mpBuyerRoleTerms" /></label>
+                <label>查询模式（每行一条）<textarea id="mpQueryPatterns"></textarea></label>
+                <label>翻译限制（每行一条）<textarea id="mpTranslationRestrictions"></textarea></label>
+                <label>身份信号（每行一条）<textarea id="mpIdentitySignals"></textarea></label>
+                <label>买家信号（每行一条）<textarea id="mpBuyerSignals"></textarea></label>
+                <label>进口/规模信号（每行一条）<textarea id="mpImportSignals"></textarea></label>
+                <label>假阳性模式（每行一条）<textarea id="mpFalsePositives"></textarea></label>
+                <label>排除项（每行一条）<textarea id="mpExclusions"></textarea></label>
+                <label>法律后缀语义（每行一条）<textarea id="mpLegalSuffixes"></textarea></label>
+                <label>偏好联系词（逗号分隔）<input id="mpPreferredContacts" /></label>
+                <label>校验说明（每行一条）<textarea id="mpValidationNotes"></textarea></label>
+                <label>礼仪（每行一条）<textarea id="mpEtiquette"></textarea></label>
+                <label>审阅备注（每行一条）<textarea id="mpReviewNotes"></textarea></label>
+                <div class="strategy-actions">
+                  <button class="button secondary" type="button" id="saveMarketPolicyButton">
+                    保存规则修改
+                  </button>
+                  <button class="button secondary" type="button" id="reviewMarketPolicyDraftButton">
+                    请求主 Agent 审阅
+                  </button>
+                  <button class="button danger hidden" type="button" id="rejectMarketPolicyButton">
+                    拒绝
+                  </button>
+                  <button class="button primary hidden" type="button" id="approveMarketPolicyButton">
+                    批准并生效
+                  </button>
+                </div>
+                <p class="market-policy-message" id="marketPolicyPanelMessage" aria-live="polite"></p>
+              </form>
+            </div>
           </aside>
         </div>
         <section class="orchestrator-progress hidden" id="orchestratorProgress" aria-live="polite">
-          <div class="spinner"></div>
-          <div>
-            <strong id="orchestratorProgressTitle">正在执行已确认策略</strong>
-            <p id="orchestratorProgressText"></p>
+          <div class="pipeline-progress">
+            <div class="pipeline-progress-header">
+              <div class="spinner"></div>
+              <div>
+                <strong id="orchestratorProgressTitle">正在执行已确认策略</strong>
+                <p id="orchestratorProgressText"></p>
+              </div>
+            </div>
+            <ol class="pipeline-stages" id="orchestratorPipelineStages" aria-label="执行流水线"></ol>
+            <div class="pipeline-round-card" id="orchestratorRoundCard"></div>
             <div class="round-progress" id="orchestratorRoundProgress"></div>
           </div>
         </section>

@@ -39,7 +39,7 @@ export function crawlerCacheKey(
     const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
     const domain = getDomain(hostname) ?? hostname;
     const configuration = JSON.stringify({
-      version: 2,
+      version: 3,
       domain,
       maxPages: positiveInteger(options?.maxPages, 20),
       regexCleaning: regexCleaningEnabled(options),

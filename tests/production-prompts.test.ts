@@ -39,6 +39,11 @@ test("公司分析提示词强制证据分层、策略驱动资格和联系人�
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /importCapability=High/);
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /Manufacturer/);
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /contactRef 与 evidenceRef/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /最多进行 30 次证据探索/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /达到上限后.*必须立即/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /canonicalName 留空/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /经营角色和进口能力使用 Unknown/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /不得猜测/);
 });
 
 test("公司触达、报告和 MarketPolicy 边界保留人工审核", () => {
