@@ -8,36 +8,34 @@ import {
   updateLeadStatus,
 } from "../src/pipeline.js";
 
-test("公司研究 Agent 只消歧爬虫提供的联系方式候选", async () => {
+test("单公司 Agent 只消歧爬虫提供的联系方式候选", async () => {
   const runtime = new DemoAgentRuntime();
   const candidate = demoCandidates[0];
   assert.ok(candidate);
 
-  const result = await runtime.researchCompany(candidate);
+  const result = await runtime.analyzeCompany(candidate);
   assert.deepEqual(
-    result.value.contacts.map((contact) => contact.value).sort(),
+    result.value.research.contacts.map((contact) => contact.value).sort(),
     candidate.contactCandidates.map((contact) => contact.value).sort(),
   );
-  assert.ok(result.value.evidence.every((item) => item.sourceUrl));
+  assert.ok(
+    result.value.research.evidence.every((item) => item.sourceUrl),
+  );
 });
 
-test("资格 Agent 淘汰零售维修店并保留 B2B 分销商", async () => {
+test("单公司 Agent 淘汰零售维修店并保留 B2B 分销商", async () => {
   const runtime = new DemoAgentRuntime();
   const distributor = demoCandidates[0];
   const retailer = demoCandidates[1];
   assert.ok(distributor && retailer);
 
-  const distributorResearch = await runtime.researchCompany(distributor);
-  const distributorDecision = await runtime.qualifyCompany(
-    distributorResearch.value,
-  );
-  const retailerResearch = await runtime.researchCompany(retailer);
-  const retailerDecision = await runtime.qualifyCompany(retailerResearch.value);
+  const distributorDecision = await runtime.analyzeCompany(distributor);
+  const retailerDecision = await runtime.analyzeCompany(retailer);
 
-  assert.equal(distributorDecision.value.isQualified, true);
-  assert.equal(retailerDecision.value.isQualified, false);
-  assert.equal(retailerDecision.value.businessRole, "Retailer");
-  assert.equal(retailerDecision.value.reviewPerformed, true);
+  assert.equal(distributorDecision.value.qualification.isQualified, true);
+  assert.equal(retailerDecision.value.qualification.isQualified, false);
+  assert.equal(retailerDecision.value.qualification.businessRole, "Retailer");
+  assert.equal(retailerDecision.value.qualification.reviewPerformed, true);
 });
 
 test("离线验证样例生成排序后的黄金买家队列并支持人工批准", async () => {
@@ -61,6 +59,8 @@ test("离线验证样例生成排序后的黄金买家队列并支持人工批�
       (lead) => lead.traces[0]?.agent === "CompanyAnalysisAgent",
     ),
   );
+  assert.equal(campaign.marketPolicyRef?.marketId, "uae");
+  assert.equal("countryContextSnapshot" in campaign, false);
 
   const lead = campaign.leads[0];
   assert.ok(lead);

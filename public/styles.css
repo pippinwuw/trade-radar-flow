@@ -973,7 +973,7 @@ textarea:focus {
   justify-content: flex-end;
 }
 
-.skill-page-header {
+.policy-page-header {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -981,53 +981,53 @@ textarea:focus {
   margin-bottom: 28px;
 }
 
-.skill-page-header h1 {
+.policy-page-header h1 {
   margin-bottom: 12px;
   font-size: clamp(30px, 4vw, 44px);
 }
 
-.skill-page-header p:last-child,
-.skill-message {
+.policy-page-header p:last-child,
+.policy-message {
   color: var(--muted);
   line-height: 1.7;
 }
 
-.skill-grid {
+.policy-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
 
-.skill-card {
+.policy-card {
   border: 1px solid var(--stroke);
   background: var(--surface);
   padding: 22px;
 }
 
-.skill-card-header {
+.policy-card-header {
   margin-bottom: 18px;
   display: flex;
   justify-content: space-between;
   gap: 16px;
 }
 
-.skill-card-header h2 {
+.policy-card-header h2 {
   margin-bottom: 5px;
   font-size: 19px;
 }
 
-.skill-card-header p,
-.skill-version {
+.policy-card-header p,
+.policy-version {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
 }
 
-.skill-group {
+.policy-group {
   margin-top: 17px;
 }
 
-.skill-group h3 {
+.policy-group h3 {
   margin-bottom: 8px;
   color: var(--muted);
   font-size: 11px;
@@ -1035,7 +1035,7 @@ textarea:focus {
   text-transform: uppercase;
 }
 
-.skill-group ul {
+.policy-group ul {
   margin: 0;
   padding-left: 18px;
   font-size: 12px;
@@ -1119,7 +1119,7 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
-  .skill-grid {
+  .policy-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1182,7 +1182,7 @@ textarea:focus {
     flex-direction: column;
   }
 
-  .skill-page-header {
+  .policy-page-header {
     align-items: stretch;
     flex-direction: column;
   }

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trade-radar.local/schemas/country-profile.schema.json",
+  "title": "CountryProfile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "displayName",
+    "shortName",
+    "aliases",
+    "gl",
+    "defaultHl",
+    "googleDomain",
+    "location",
+    "cities",
+    "phoneCountryCode",
+    "callingCode",
+    "domainSuffix",
+    "businessSuffixes"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,39}$" },
+    "displayName": { "type": "string", "minLength": 1 },
+    "shortName": { "type": "string", "minLength": 1 },
+    "aliases": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "countryNameAliases": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "gl": { "type": "string", "pattern": "^[a-z]{2}$" },
+    "defaultHl": { "type": "string", "minLength": 1 },
+    "googleDomain": { "type": "string", "minLength": 1 },
+    "location": { "type": "string", "minLength": 1 },
+    "cities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "phoneCountryCode": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "callingCode": { "type": "string", "pattern": "^\\+[0-9]{1,4}$" },
+    "domainSuffix": { "type": "string", "pattern": "^\\.[a-z0-9.-]+$" },
+    "businessSuffixes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

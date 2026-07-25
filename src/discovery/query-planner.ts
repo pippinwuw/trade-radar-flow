@@ -1,15 +1,30 @@
 import type { AgentRuntime, CampaignAgentContext } from "../agent-runtime.js";
 import { requireCountry } from "../countries/registry.js";
 import type { CampaignInput, CampaignStrategy } from "../domain.js";
-import { getMarketSkillRegistry } from "../agent-skills/registry.js";
+import {
+  getApprovedMarketPolicy,
+  getMarketPolicy,
+} from "../market-policy.js";
 
 export async function buildCampaignAgentContext(
   input: CampaignInput,
   strategy?: CampaignStrategy,
 ): Promise<CampaignAgentContext> {
   const country = requireCountry(input.country);
-  const registry = await getMarketSkillRegistry();
-  const skill = registry.getSummary(country.id);
+  const marketPolicy = strategy?.marketPolicyRef
+    ? getMarketPolicy(
+        strategy.marketPolicyRef.marketId,
+        strategy.marketPolicyRef.version,
+      )
+    : getApprovedMarketPolicy(country.id);
+  if (
+    marketPolicy.status !== "approved" ||
+    marketPolicy.marketId !== country.id
+  ) {
+    throw new Error(
+      `策略国家 ${country.id} 未绑定已批准的市场规则包`,
+    );
+  }
   return {
     input: {
       ...input,
@@ -17,11 +32,7 @@ export async function buildCampaignAgentContext(
     },
     strategy,
     country,
-    skill,
-    skillInvocation: registry.invocation(
-      country.id,
-      `当前产品：${input.product}\n首选语言：${input.language}`,
-    ),
+    marketPolicy,
   };
 }
 
@@ -36,8 +47,7 @@ export async function planCampaignSearch(
   const plan = await runtime.planSearch(
     context.input,
     context.country,
-    context.skill,
-    context.skillInvocation,
+    context.marketPolicy,
     context,
   );
   return { context, plan };

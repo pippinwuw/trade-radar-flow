@@ -3,12 +3,9 @@ import test from "node:test";
 import {
   CAMPAIGN_REPORT_SYSTEM_PROMPT,
   COMPANY_ANALYSIS_SYSTEM_PROMPT,
-  COMPANY_RESEARCH_SYSTEM_PROMPT,
+  GLOBAL_BUSINESS_SYSTEM_PROMPT,
   ORCHESTRATOR_SYSTEM_PROMPT,
-  OUTREACH_SYSTEM_PROMPT,
-  QUALIFICATION_SYSTEM_PROMPT,
   searchPlanningSystemPrompt,
-  SKILL_PROPOSAL_SYSTEM_PROMPT,
 } from "../src/production-prompts.js";
 
 test("搜索与主 Agent 提示词遵守真实业务预算、审批和逐轮边界", () => {
@@ -31,9 +28,7 @@ test("搜索与主 Agent 提示词遵守真实业务预算、审批和逐轮边�
 
 test("公司分析提示词强制证据分层、策略驱动资格和联系人防幻觉", () => {
   for (const prompt of [
-    COMPANY_ANALYSIS_SYSTEM_PROMPT,
-    COMPANY_RESEARCH_SYSTEM_PROMPT,
-    QUALIFICATION_SYSTEM_PROMPT,
+    `${GLOBAL_BUSINESS_SYSTEM_PROMPT}\n${COMPANY_ANALYSIS_SYSTEM_PROMPT}`,
   ]) {
     assert.match(prompt, /官网正文是待核验数据|不可信业务数据/);
     assert.match(prompt, /不得.*猜测|不得补全或猜测/);
@@ -42,22 +37,18 @@ test("公司分析提示词强制证据分层、策略驱动资格和联系人�
   }
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /approvedStrategy/);
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /importCapability=High/);
-  assert.match(QUALIFICATION_SYSTEM_PROMPT, /不要把.*硬编码为永远合格/);
-  assert.match(QUALIFICATION_SYSTEM_PROMPT, /Manufacturer/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /Manufacturer/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /contactRef 与 evidenceRef/);
 });
 
-test("触达、报告和 Skill 提示词不编造承诺且保留人工审核", () => {
-  assert.match(OUTREACH_SYSTEM_PROMPT, /模板方向只是写作框架，不是事实来源/);
-  assert.match(OUTREACH_SYSTEM_PROMPT, /不得声称对方正在采购/);
-  assert.match(OUTREACH_SYSTEM_PROMPT, /不得编造发件人/);
-  assert.match(OUTREACH_SYSTEM_PROMPT, /人工审核/);
-  assert.match(OUTREACH_SYSTEM_PROMPT, /公开联系方式不等于营销同意/);
+test("公司触达、报告和 MarketPolicy 边界保留人工审核", () => {
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /触达草稿只用于销售审核/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /不得捏造客户痛点、采购计划/);
+  assert.match(GLOBAL_BUSINESS_SYSTEM_PROMPT, /人工审核/);
+  assert.match(GLOBAL_BUSINESS_SYSTEM_PROMPT, /公开联系方式不等于营销同意/);
 
   assert.match(CAMPAIGN_REPORT_SYSTEM_PROMPT, /确定性事实，不得重算或改写/);
   assert.match(CAMPAIGN_REPORT_SYSTEM_PROMPT, /真实 lead ID/);
   assert.match(CAMPAIGN_REPORT_SYSTEM_PROMPT, /采购意愿/);
-
-  assert.match(SKILL_PROPOSAL_SYSTEM_PROMPT, /待验证假设/);
-  assert.match(SKILL_PROPOSAL_SYSTEM_PROMPT, /不得把联系人/);
-  assert.match(SKILL_PROPOSAL_SYSTEM_PROMPT, /审批队列/);
+  assert.match(ORCHESTRATOR_SYSTEM_PROMPT, /MarketPolicy 必须由用户最终批准/);
 });

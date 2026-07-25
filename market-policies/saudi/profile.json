@@ -1,0 +1,52 @@
+{
+  "id": "saudi",
+  "displayName": "Saudi Arabia",
+  "shortName": "KSA",
+  "aliases": [
+    "saudi",
+    "sa",
+    "ksa",
+    "saudi arabia",
+    "沙特",
+    "沙特阿拉伯",
+    "riyadh",
+    "利雅得"
+  ],
+  "countryNameAliases": [
+    "Saudi Arabia",
+    "KSA",
+    "Kingdom of Saudi Arabia",
+    "المملكة العربية السعودية",
+    "السعودية"
+  ],
+  "gl": "sa",
+  "defaultHl": "ar",
+  "googleDomain": "google.com.sa",
+  "location": "Saudi Arabia",
+  "cities": [
+    "Riyadh",
+    "Jeddah",
+    "Mecca",
+    "Medina",
+    "Dammam",
+    "Khobar",
+    "Jubail",
+    "Buraydah",
+    "Hofuf",
+    "Tabuk",
+    "Abha",
+    "Khamis Mushait",
+    "Hail"
+  ],
+  "phoneCountryCode": "SA",
+  "callingCode": "+966",
+  "domainSuffix": ".sa",
+  "businessSuffixes": [
+    "Trading Co.",
+    "Est.",
+    "Commercial Registration",
+    "CR",
+    "شركة",
+    "مؤسسة"
+  ]
+}

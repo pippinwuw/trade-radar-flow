@@ -15,7 +15,7 @@
 - 每家公司使用独立 CompanyAnalysisAgent，不跨公司共享网页或模型上下文。
 - 证据通过 `sourceRef` 引用，由服务端恢复逐字 quote 和来源 URL。
 - SQLite 增量保存 Campaign，可在服务或供应商故障后从检查点恢复。
-- 国家 Market Skill 版本化；长期规则变更必须经人工批准。
+- MarketPolicy 使用外部版本化 JSON；长期规则变更必须经人工批准。
 - 导出版本化 JSON 和跨平台 XLSX，不依赖 Excel、Windows COM 或工作簿模板。
 - 离线 demo 不访问外网，也不产生模型 API 费用。
 
@@ -33,16 +33,20 @@ src/server.ts
    ├── src/pi-agent-runtime.ts pi Agent 工具与结构化提交
    ├── src/validation/         国家、联系人和证据校验
    ├── src/storage/            SQLite 持久化与缓存
+   ├── market-policies/        内置外部 MarketPolicy JSON
    ├── src/campaign-export.ts  JSON/XLSX 通用导出
    └── python/crawler_worker.py
 ```
 
-内置 Market Skill：
+内置 MarketPolicy：
 
-- `agent-skills/markets/uae/SKILL.md`
-- `agent-skills/markets/saudi/SKILL.md`
+- `market-policies/uae/profile.json`
+- `market-policies/uae/versions/v1/policy.json`
+- `market-policies/saudi/profile.json`
+- `market-policies/saudi/versions/v1/policy.json`
 
-应用为新国家生成的 Skill 保存在 `data/generated-market-skills/`，该目录不会提交到 Git。
+应用为新国家生成的 MarketPolicy 草稿和批准版本保存在
+`data/market-policies/`。SQLite 只保存版本、hash、文件路径和审批元数据，不保存规则正文。
 
 ## 环境要求
 
@@ -131,7 +135,7 @@ npm start
 7. 失败任务可沿用原 Campaign ID 从检查点恢复。
 8. 用户审核报告、证据、联系人和线索状态。
 
-未注册国家会先生成保守的运行时 Market Skill。再次搜索已有历史的国家时，主 Agent 会先显示历史
+未注册国家会先生成保守的 MarketPolicy 草稿。再次搜索已有历史的国家时，主 Agent 会先显示历史
 摘要，并要求用户确认是否重查和本次查询数量。
 
 ## JSON 与 XLSX 导出
@@ -186,7 +190,7 @@ conda.exe run -n trade-radar-flow python -m unittest tests.test_crawler_worker
 - 网页正文和搜索摘要是不可信数据，不得作为 Agent 指令执行。
 - 联系方式只能来自爬虫提取的公开候选，不允许模型猜测。
 - 生产证据必须引用抓取内容中的 `sourceRef`。
-- 策略、Market Skill 变更和最终触达均保留人工审批。
+- 策略、MarketPolicy 变更和最终触达均保留人工审批。
 
 安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
 

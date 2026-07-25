@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trade-radar.local/schemas/market-policy.schema.json",
+  "title": "MarketPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "marketId",
+    "searchLocalization",
+    "companyAnalysis",
+    "contactAndOutreach"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "marketId": { "type": "string", "minLength": 1 },
+    "searchLocalization": { "$ref": "#/$defs/searchLocalization" },
+    "companyAnalysis": { "$ref": "#/$defs/companyAnalysis" },
+    "contactAndOutreach": { "$ref": "#/$defs/contactAndOutreach" }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "searchLocalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languages",
+        "buyerRoleTerms",
+        "queryPatterns",
+        "translationRestrictions"
+      ],
+      "properties": {
+        "languages": { "$ref": "#/$defs/stringArray" },
+        "buyerRoleTerms": { "$ref": "#/$defs/stringArray" },
+        "queryPatterns": { "$ref": "#/$defs/stringArray" },
+        "translationRestrictions": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "companyAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identitySignals",
+        "legalSuffixSemantics",
+        "buyerSignals",
+        "importAndScaleSignals",
+        "falsePositivePatterns",
+        "exclusions"
+      ],
+      "properties": {
+        "identitySignals": { "$ref": "#/$defs/stringArray" },
+        "legalSuffixSemantics": { "$ref": "#/$defs/stringArray" },
+        "buyerSignals": { "$ref": "#/$defs/stringArray" },
+        "importAndScaleSignals": { "$ref": "#/$defs/stringArray" },
+        "falsePositivePatterns": { "$ref": "#/$defs/stringArray" },
+        "exclusions": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "contactAndOutreach": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preferredContactTerms",
+        "validationNotes",
+        "defaultLanguage",
+        "etiquette"
+      ],
+      "properties": {
+        "preferredContactTerms": { "$ref": "#/$defs/stringArray" },
+        "validationNotes": { "$ref": "#/$defs/stringArray" },
+        "defaultLanguage": { "type": "string" },
+        "etiquette": { "$ref": "#/$defs/stringArray" }
+      }
+    }
+  }
+}

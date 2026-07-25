@@ -38,7 +38,8 @@ test("主 Agent 创建会话并明确引导用户下一步", async () => {
   });
 
   assert.equal(created.session.status, "drafting");
-  assert.equal(created.session.strategy.skillName, "uae");
+  assert.equal(created.session.strategy.schemaVersion, 2);
+  assert.equal(created.session.strategy.marketPolicyRef?.marketId, "uae");
   assert.equal(created.messages.length, 1);
   assert.match(created.messages[0]?.content ?? "", /下一步：/);
   assert.equal(created.messages[0]?.nextAction, "reply_to_agent");
@@ -108,7 +109,7 @@ test("修改策略会增加版本并使原审批流程失效", async () => {
   assert.equal(updated.approvalId, undefined);
 });
 
-test("主 Agent 切换国家时同步 Skill、清空旧查询并重新送审", async () => {
+test("主 Agent 切换国家时同步 MarketPolicy、清空旧查询并重新送审", async () => {
   const active = service();
   const created = await active.createSession({
     product: "PVC tarpaulin",
@@ -120,13 +121,16 @@ test("主 Agent 切换国家时同步 Skill、清空旧查询并重新送审", a
 
   const switched = await active.chat(
     created.session.id,
-    "目标国家改为沙特，请使用沙特对应的 Market Skill 重新规划。",
+    "目标国家改为沙特，请使用沙特对应的 MarketPolicy 重新规划。",
   );
 
   assert.equal(switched.session.status, "awaiting_approval");
   assert.equal(switched.session.strategy.country, "Saudi Arabia");
-  assert.equal(switched.session.strategy.skillName, "saudi");
-  assert.notEqual(switched.session.strategy.skillVersion, "");
+  assert.equal(
+    switched.session.strategy.marketPolicyRef?.marketId,
+    "saudi",
+  );
+  assert.ok(switched.session.strategy.marketPolicyRef?.version);
   assert.notEqual(switched.session.strategyHash, previousHash);
   assert.equal(switched.session.approvedStrategyHash, undefined);
   assert.ok(switched.session.strategy.search.queries.length > 0);
@@ -326,7 +330,10 @@ test("失败后改国家会废弃旧 Campaign 并重新进入审批", async () =
 
   assert.equal(retargeted.session.status, "awaiting_approval");
   assert.equal(retargeted.session.strategy.country, "Saudi Arabia");
-  assert.equal(retargeted.session.strategy.skillName, "saudi");
+  assert.equal(
+    retargeted.session.strategy.marketPolicyRef?.marketId,
+    "saudi",
+  );
   assert.equal(retargeted.session.campaignId, undefined);
   assert.equal(retargeted.session.approvedStrategyHash, undefined);
   assert.equal(attempts, 1);

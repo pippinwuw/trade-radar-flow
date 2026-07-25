@@ -5,6 +5,31 @@ import type {
 } from "../domain.js";
 
 export function compactCampaignForMainAgent(campaign: CampaignResult): unknown {
+  const rankedLeads = [...campaign.leads].sort(
+    (left, right) =>
+      Number(right.qualification.isQualified) -
+        Number(left.qualification.isQualified) ||
+      right.qualification.confidence - left.qualification.confidence ||
+      right.qualification.productFitScore -
+        left.qualification.productFitScore ||
+      right.qualification.scaleScore - left.qualification.scaleScore ||
+      left.id.localeCompare(right.id),
+  );
+  const companies = campaign.discovery?.companies ?? [];
+  const companyStatusCounts = Object.fromEntries(
+    [
+      "pending",
+      "crawling",
+      "crawl_failed",
+      "country_rejected",
+      "analyzing",
+      "analyzed",
+      "analysis_failed",
+    ].map((status) => [
+      status,
+      companies.filter((company) => company.status === status).length,
+    ]),
+  );
   return {
     id: campaign.id,
     product: campaign.product,
@@ -12,18 +37,25 @@ export function compactCampaignForMainAgent(campaign: CampaignResult): unknown {
     discovery: campaign.discovery
       ? {
           provider: campaign.discovery.provider,
-          queries: campaign.discovery.plan.queries,
+          queryCount: campaign.discovery.plan.queries.length,
+          queries: campaign.discovery.plan.queries.slice(0, 50),
           hitCount: campaign.discovery.hits.length,
-          skipped: campaign.discovery.skipped,
-          errors: campaign.discovery.errors,
+          skippedCount: campaign.discovery.skipped.length,
+          skipped: campaign.discovery.skipped.slice(0, 20),
+          errorCount: campaign.discovery.errors.length,
+          errors: campaign.discovery.errors.slice(0, 20),
           searchRequests: campaign.discovery.serpRequests,
           cacheHits: campaign.discovery.cacheHits,
-          companies: campaign.discovery.companies,
-          rounds: campaign.discovery.rounds,
+          companyStatusCounts,
+          companies: companies.slice(0, 30),
+          roundCount: campaign.discovery.rounds?.length ?? 0,
+          rounds: campaign.discovery.rounds?.slice(-50),
           progress: campaign.discovery.progress,
         }
       : undefined,
-    leads: campaign.leads.map((lead) => ({
+    leadCount: campaign.leads.length,
+    omittedLeadCount: Math.max(0, campaign.leads.length - 30),
+    leads: rankedLeads.slice(0, 30).map((lead) => ({
       id: lead.id,
       domain: lead.candidate.domain,
       company: lead.research.canonicalName,

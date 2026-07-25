@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRuntime } from "./agent-runtime.js";
 import type { CampaignAgentContext } from "./agent-runtime.js";
-import { getMarketSkillRegistry } from "./agent-skills/registry.js";
 import { requireCountry } from "./countries/registry.js";
+import { getApprovedMarketPolicy, marketPolicyRef } from "./market-policy.js";
 import { crawlCandidate } from "./crawler.js";
 import { DemoAgentRuntime } from "./demo-agent-runtime.js";
 import { demoCandidates } from "./demo-data.js";
@@ -104,6 +104,20 @@ async function processCandidate(
     status,
     createdAt: new Date().toISOString(),
   };
+  const analysisCacheKey = analysis.trace.cache?.key;
+  if (analysisCacheKey && analysis.trace.mode === "live") {
+    const cached = getDatabase().getCompanyAnalysisCache(analysisCacheKey);
+    if (cached) {
+      getDatabase().putCompanyAnalysisCache({
+        ...cached,
+        sourceLeadId: lead.id,
+      });
+      analysis.trace.cache = {
+        key: analysisCacheKey,
+        sourceLeadId: lead.id,
+      };
+    }
+  }
   logger.info(
     "pipeline.candidate.completed",
     undefined,
@@ -210,6 +224,11 @@ export async function runCampaign(
     discovery: options.discovery ?? previous?.discovery,
     analysisFailures,
     candidateQueue: [...queueByDomain.values()],
+    marketPolicyRef:
+      previous?.marketPolicyRef ??
+      (options.context
+        ? marketPolicyRef(options.context.marketPolicy)
+        : undefined),
   };
   const finalize = options.finalize ?? true;
   logger.info(
@@ -397,9 +416,11 @@ export async function runCampaign(
 export async function runOfflineSampleCampaign(
   input: CampaignInput,
 ): Promise<CampaignResult> {
-  return runCampaign(input, structuredClone(demoCandidates), {
+  const context = await buildCampaignAgentContext(input);
+  return runCampaign(context.input, structuredClone(demoCandidates), {
     searchMode: "demo",
     runtime: new DemoAgentRuntime(),
+    context,
   });
 }
 
@@ -416,8 +437,7 @@ async function buildManualContext(
   candidate: CompanyCandidate,
 ): Promise<CampaignAgentContext> {
   const country = requireCountry(input.country);
-  const registry = await getMarketSkillRegistry();
-  const skill = registry.getSummary(country.id);
+  const marketPolicy = getApprovedMarketPolicy(country.id);
   candidate.countryValidation = validateCompanyCountry(candidate, country);
   candidate.contactValidations = await validateContactCandidates(
     candidate,
@@ -426,11 +446,7 @@ async function buildManualContext(
   return {
     input: { ...input, country: country.displayName },
     country,
-    skill,
-    skillInvocation: registry.invocation(
-      country.id,
-      `当前产品：${input.product}\n首选语言：${input.language}`,
-    ),
+    marketPolicy,
   };
 }
 
@@ -643,7 +659,7 @@ export async function runApprovedStrategy(
   executionOptions: ApprovedStrategyRunOptions = {},
 ): Promise<CampaignResult> {
   logger.info("pipeline.approved_strategy.started", undefined, {
-    skillVersion: strategy.skillVersion,
+    marketPolicyRef: strategy.marketPolicyRef,
     product: strategy.product,
     country: strategy.country,
     queryCount: strategy.search.queries.length,
@@ -663,11 +679,11 @@ export async function runApprovedStrategy(
   const id = campaignId ?? randomUUID();
   const context = await buildCampaignAgentContext(input, strategy);
   const approvedPlan: SearchPlan = {
-    countryId: strategy.skillName,
+    countryId:
+      strategy.marketPolicyRef?.marketId ?? requireCountry(strategy.country).id,
     product: strategy.product,
     queries: strategy.search.queries,
-    skillName: strategy.skillName,
-    skillVersion: strategy.skillVersion,
+    marketPolicyRef: strategy.marketPolicyRef,
   };
   let campaign: CampaignResult =
     database.getCampaign(id) ?? {
@@ -680,6 +696,7 @@ export async function runApprovedStrategy(
       searchMode: "serper",
       analysisFailures: [],
       candidateQueue: [],
+      marketPolicyRef: marketPolicyRef(context.marketPolicy),
     };
   const discovery = ensureRoundDiscovery(campaign, approvedPlan);
   const progress = discovery.progress;

@@ -12,20 +12,14 @@ import {
   serializeCampaignJson,
 } from "./campaign-export.js";
 import { crawlCandidate } from "./crawler.js";
-import {
-  approveSkillProposal,
-  editSkillProposal,
-  generateSkillProposal,
-  listMarketSkills,
-  listSkillProposals,
-  rejectSkillProposal,
-} from "./agent-skills/governance.js";
 import { listCountryProfiles } from "./countries/registry.js";
 import type {
   CampaignInput,
   CampaignStrategy,
   LeadStatus,
+  MarketPolicy,
 } from "./domain.js";
+import { saveMarketPolicyDraft } from "./market-policy.js";
 import { getOrchestratorService } from "./orchestrator/service.js";
 import { logger, runWithLogContext } from "./logging/logger.js";
 import { OperationTimeoutError } from "./concurrency.js";
@@ -345,41 +339,132 @@ app.post("/api/campaigns/analyze", async (request, response) => {
   response.status(201).json(result);
 });
 
-app.get("/api/skills", async (_request, response) => {
-  response.json(await listMarketSkills());
+app.get("/api/market-policies", (request, response) => {
+  const marketId =
+    typeof request.query.marketId === "string"
+      ? request.query.marketId
+      : undefined;
+  response.json(
+    getOrchestratorService().listMarketPolicies(marketId),
+  );
 });
 
-app.get("/api/skill-proposals", (_request, response) => {
-  response.json(listSkillProposals());
-});
+app.get(
+  "/api/market-policies/:marketId/:version",
+  (request, response) => {
+    response.json(
+      getOrchestratorService().getMarketPolicy(
+        request.params.marketId,
+        request.params.version,
+      ),
+    );
+  },
+);
 
-app.post("/api/skill-proposals/generate", async (request, response) => {
-  const campaignId = (request.body as { campaignId?: unknown } | undefined)
-    ?.campaignId;
-  if (typeof campaignId !== "string" || !campaignId) {
-    response.status(400).json({ error: "请提供 campaignId" });
+app.post("/api/market-policies/drafts", (request, response) => {
+  const body =
+    typeof request.body === "object" && request.body !== null
+      ? (request.body as Partial<MarketPolicy>)
+      : undefined;
+  if (
+    !body?.marketId ||
+    !body.searchLocalization ||
+    !body.companyAnalysis ||
+    !body.contactAndOutreach
+  ) {
+    response.status(400).json({ error: "MarketPolicy 草稿字段不完整" });
     return;
   }
-  response.status(201).json(await generateSkillProposal(campaignId));
+  response.status(201).json(
+    saveMarketPolicyDraft({
+      schemaVersion: 1,
+      marketId: body.marketId,
+      searchLocalization: body.searchLocalization,
+      companyAnalysis: body.companyAnalysis,
+      contactAndOutreach: body.contactAndOutreach,
+      metadata: {
+        reviewNotes: body.metadata?.reviewNotes ?? [],
+      },
+    }),
+  );
 });
 
-app.patch("/api/skill-proposals/:id", (request, response) => {
-  const proposedContent = (
-    request.body as { proposedContent?: unknown } | undefined
-  )?.proposedContent;
-  if (typeof proposedContent !== "string") {
-    response.status(400).json({ error: "请提供 proposedContent" });
-    return;
-  }
-  response.json(editSkillProposal(request.params.id, proposedContent));
-});
+app.patch(
+  "/api/market-policies/:marketId/:version",
+  (request, response) => {
+    const current = getOrchestratorService().getMarketPolicy(
+      request.params.marketId,
+      request.params.version,
+    );
+    if (current.status !== "draft" && current.status !== "reviewed") {
+      response.status(409).json({ error: "只能修订草稿或已审阅版本" });
+      return;
+    }
+    const patch =
+      typeof request.body === "object" && request.body !== null
+        ? (request.body as Partial<MarketPolicy>)
+        : {};
+    response.status(201).json(
+      saveMarketPolicyDraft({
+        schemaVersion: 1,
+        marketId: current.marketId,
+        searchLocalization:
+          patch.searchLocalization ?? current.searchLocalization,
+        companyAnalysis: patch.companyAnalysis ?? current.companyAnalysis,
+        contactAndOutreach:
+          patch.contactAndOutreach ?? current.contactAndOutreach,
+        metadata: {
+          reviewNotes: patch.metadata?.reviewNotes ?? [],
+        },
+      }),
+    );
+  },
+);
 
-app.post("/api/skill-proposals/:id/approve", async (request, response) => {
-  response.json(await approveSkillProposal(request.params.id));
-});
+app.post(
+  "/api/market-policies/:marketId/:version/review",
+  async (request, response) => {
+    response.json(
+      await getOrchestratorService().reviewMarketPolicy(
+        request.params.marketId,
+        request.params.version,
+      ),
+    );
+  },
+);
 
-app.post("/api/skill-proposals/:id/reject", (request, response) => {
-  response.json(rejectSkillProposal(request.params.id));
+app.post(
+  "/api/market-policies/:marketId/:version/approve",
+  (request, response) => {
+    response.json(
+      getOrchestratorService().approveMarketPolicy(
+        request.params.marketId,
+        request.params.version,
+      ),
+    );
+  },
+);
+
+app.post(
+  "/api/market-policies/:marketId/:version/reject",
+  (request, response) => {
+    response.json(
+      getOrchestratorService().rejectMarketPolicy(
+        request.params.marketId,
+        request.params.version,
+      ),
+    );
+  },
+);
+
+app.all(/^\/api\/(?:country-contexts(?:\/.*)?|skills|skill-proposals(?:\/.*)?)$/, (
+  _request,
+  response,
+) => {
+  response.status(410).json({
+    error:
+      "市场规则包接口已迁移到 /api/market-policies；旧接口不再写入数据",
+  });
 });
 
 app.patch(

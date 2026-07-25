@@ -5,7 +5,10 @@ import type {
   CampaignInput,
   CampaignStrategy,
 } from "../domain.js";
-import { getMarketSkillRegistry } from "../agent-skills/registry.js";
+import {
+  getApprovedMarketPolicy,
+  marketPolicyRef,
+} from "../market-policy.js";
 import {
   DEFAULT_SEARCH_QUERIES,
   MAX_RESULTS_PER_QUERY,
@@ -37,6 +40,8 @@ function positiveInteger(value: number, fallback: number): number {
 }
 
 export function clampStrategy(strategy: CampaignStrategy): CampaignStrategy {
+  const country = requireCountry(strategy.country);
+  const approvedPolicy = getApprovedMarketPolicy(country.id);
   const maxQueries = positiveInteger(
     strategy.budget.maxQueries,
     DEFAULT_SEARCH_QUERIES,
@@ -44,8 +49,9 @@ export function clampStrategy(strategy: CampaignStrategy): CampaignStrategy {
   const resultsPerQuery = MAX_RESULTS_PER_QUERY;
   return {
     ...strategy,
+    schemaVersion: 2,
     product: strategy.product.trim(),
-    country: requireCountry(strategy.country).displayName,
+    country: country.displayName,
     language: strategy.language.trim() || "English",
     objective: strategy.objective.trim(),
     budget: {
@@ -80,6 +86,10 @@ export function clampStrategy(strategy: CampaignStrategy): CampaignStrategy {
         Math.min(strategy.validation.minimumCountryScore, 100),
       ),
     },
+    marketPolicyRef:
+      strategy.marketPolicyRef?.marketId === country.id
+        ? strategy.marketPolicyRef
+        : marketPolicyRef(approvedPolicy),
   };
 }
 
@@ -87,10 +97,14 @@ export function assertStrategy(strategy: CampaignStrategy): void {
   if (!strategy.product) throw new Error("策略缺少目标产品");
   if (!strategy.objective) throw new Error("策略缺少任务目标");
   const country = requireCountry(strategy.country);
-  if (strategy.skillName !== country.id) {
+  const policyMarket = strategy.marketPolicyRef?.marketId;
+  if (strategy.schemaVersion === 2 && policyMarket !== country.id) {
     throw new Error(
-      `策略国家 ${country.displayName} 与 Market Skill ${strategy.skillName} 不一致`,
+      `策略国家 ${country.displayName} 与市场规则包 ${policyMarket ?? "未设置"} 不一致`,
     );
+  }
+  if (strategy.schemaVersion === 2 && !strategy.marketPolicyRef) {
+    throw new Error("schema v2 策略缺少已批准市场规则包引用");
   }
   if (!strategy.targetCustomer.businessRoles.length) {
     throw new Error("策略至少需要一个目标客户角色");
@@ -120,9 +134,9 @@ export async function createDefaultStrategy(
   input: CampaignInput,
 ): Promise<CampaignStrategy> {
   const country = requireCountry(input.country);
-  const skill = (await getMarketSkillRegistry()).getSummary(country.id);
+  const policy = getApprovedMarketPolicy(country.id);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     product: input.product,
     country: country.displayName,
     language: input.language,
@@ -189,8 +203,7 @@ export async function createDefaultStrategy(
         source: "template",
       },
     ],
-    skillName: country.id,
-    skillVersion: skill.version,
+    marketPolicyRef: marketPolicyRef(policy),
   };
 }
 

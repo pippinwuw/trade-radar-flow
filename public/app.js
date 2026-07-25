@@ -23,14 +23,14 @@ const elements = {
   leadItemTemplate: document.querySelector("#leadItemTemplate"),
   pageTabs: document.querySelectorAll("[data-page-target]"),
   workbenchPage: document.querySelector("#workbenchPage"),
-  skillsPage: document.querySelector("#skillsPage"),
-  skillCards: document.querySelector("#skillCards"),
+  policiesPage: document.querySelector("#policiesPage"),
+  policyCards: document.querySelector("#policyCards"),
   proposalList: document.querySelector("#proposalList"),
-  skillMessage: document.querySelector("#skillMessage"),
-  generateSkillProposalButton: document.querySelector(
-    "#generateSkillProposalButton",
+  policyMessage: document.querySelector("#policyMessage"),
+  reviewMarketPolicyButton: document.querySelector(
+    "#reviewMarketPolicyButton",
   ),
-  refreshSkillsButton: document.querySelector("#refreshSkillsButton"),
+  refreshPoliciesButton: document.querySelector("#refreshPoliciesButton"),
   newOrchestratorButton: document.querySelector("#newOrchestratorButton"),
   orchestratorSessionSelect: document.querySelector(
     "#orchestratorSessionSelect",
@@ -267,7 +267,7 @@ function setLoading(loading, mode = "agent") {
   const messages =
     mode === "search"
       ? [
-          "查询规划 Agent 正在加载国家 Skill...",
+          "查询规划 Agent 正在加载已批准的 MarketPolicy...",
           "Serper 正在执行本地化 Google 搜索...",
           "Python 爬虫正在采集候选公司官网...",
           "正在执行联系人与国家信号本地验证...",
@@ -1221,150 +1221,112 @@ async function confirmOrchestratorReport() {
 
 function switchPage(pageId) {
   elements.workbenchPage.classList.toggle("hidden", pageId !== "workbenchPage");
-  elements.skillsPage.classList.toggle("hidden", pageId !== "skillsPage");
+  elements.policiesPage.classList.toggle("hidden", pageId !== "policiesPage");
   elements.pageTabs.forEach((tab) =>
     tab.classList.toggle("active", tab.dataset.pageTarget === pageId),
   );
-  if (pageId === "skillsPage") loadSkillManagement();
+  if (pageId === "policiesPage") loadMarketPolicyManagement();
 }
 
-function renderSkillCards(skills) {
-  elements.skillCards.innerHTML = skills
-    .map((skill) => {
-      const groups = [
-        ["搜索配置", skill.keyInformation.searchConfiguration],
-        ["查询策略", skill.keyInformation.queryPatterns],
-        ["验证信号", skill.keyInformation.validationSignals],
-        ["排除规则", skill.keyInformation.exclusions],
-      ]
-        .map(
-          ([title, items]) =>
-            `<div class="skill-group"><h3>${escapeHtml(title)}</h3><ul>${items
-              .slice(0, 6)
-              .map((item) => `<li>${escapeHtml(item)}</li>`)
-              .join("")}</ul></div>`,
-        )
-        .join("");
-      return `<article class="skill-card">
-        <header class="skill-card-header">
-          <div>
-            <h2>${skill.name === "uae" ? "阿联酋" : "沙特阿拉伯"}</h2>
-            <p>${escapeHtml(skill.description)}</p>
-          </div>
-          <span class="skill-version">v ${escapeHtml(skill.version)}</span>
+function policyGroups(policy) {
+  return [
+    ["搜索本地化", [...policy.searchLocalization.languages, ...policy.searchLocalization.buyerRoleTerms, ...policy.searchLocalization.queryPatterns]],
+    ["公司分析", [...policy.companyAnalysis.identitySignals, ...policy.companyAnalysis.buyerSignals, ...policy.companyAnalysis.importAndScaleSignals]],
+    ["联系与触达", [...policy.contactAndOutreach.preferredContactTerms, ...policy.contactAndOutreach.validationNotes, ...policy.contactAndOutreach.etiquette]],
+    ["排除与误判", [...policy.companyAnalysis.falsePositivePatterns, ...policy.companyAnalysis.exclusions]],
+  ];
+}
+
+function renderPolicyCards(policies) {
+  elements.policyCards.innerHTML = policies
+    .filter((policy) => policy.status === "approved")
+    .map((policy) => {
+      const groups = policyGroups(policy).map(
+        ([title, items]) =>
+          `<div class="policy-group"><h3>${escapeHtml(title)}</h3><ul>${items.slice(0, 6).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>`,
+      ).join("");
+      return `<article class="policy-card">
+        <header class="policy-card-header">
+          <div><h2>${escapeHtml(policy.marketId)}</h2><p>已批准 · ${escapeHtml(policy.metadata.source)}</p></div>
+          <span class="policy-version">v ${escapeHtml(policy.version)}</span>
         </header>
         ${groups}
       </article>`;
-    })
-    .join("");
+    }).join("");
 }
 
-function renderProposals(proposals) {
-  if (!proposals.length) {
-    elements.proposalList.innerHTML =
-      '<div class="empty-proposals">暂无 Skill 更新提案。完成任务后可让 AI 生成一项改进建议。</div>';
+function renderProposals(policies) {
+  const pending = policies.filter((policy) => policy.status !== "approved");
+  if (!pending.length) {
+    elements.proposalList.innerHTML = '<div class="empty-proposals">暂无待处理 MarketPolicy 版本。</div>';
     return;
   }
-  const statusText = {
-    pending: "待审批",
-    approved: "已批准",
-    rejected: "已拒绝",
-  };
-  elements.proposalList.innerHTML = proposals
-    .map(
-      (proposal) => `<article class="proposal-item" data-proposal-id="${escapeHtml(proposal.id)}">
-        <header class="proposal-item-header">
-          <div>
-            <h3>${escapeHtml(proposal.title)}</h3>
-            <p>${proposal.countryId === "uae" ? "阿联酋" : proposal.countryId === "saudi" ? "沙特" : escapeHtml(proposal.countryId)} · ${escapeHtml(proposal.section)}</p>
-          </div>
-          <span class="status-pill ${escapeHtml(proposal.status)}">${statusText[proposal.status] ?? proposal.status}</span>
-        </header>
-        <p class="proposal-rationale">${escapeHtml(proposal.rationale)}</p>
-        <textarea class="proposal-editor" ${proposal.status !== "pending" ? "disabled" : ""}>${escapeHtml(proposal.proposedContent)}</textarea>
-        ${
-          proposal.status === "pending"
-            ? `<div class="proposal-actions">
-                <button class="button secondary" data-proposal-action="save">保存修正</button>
-                <button class="button danger" data-proposal-action="reject">拒绝</button>
-                <button class="button primary" data-proposal-action="approve">批准并生效</button>
-              </div>`
-            : ""
-        }
-      </article>`,
-    )
-    .join("");
-
-  elements.proposalList
-    .querySelectorAll("[data-proposal-action]")
-    .forEach((button) => {
-      button.addEventListener("click", () => handleProposalAction(button));
-    });
+  const statusText = { draft: "草稿", reviewed: "主 Agent 已审阅", superseded: "已替代" };
+  elements.proposalList.innerHTML = pending.map(
+    (policy) => `<article class="proposal-item" data-market-id="${escapeHtml(policy.marketId)}" data-policy-version="${escapeHtml(policy.version)}">
+      <header class="proposal-item-header"><div>
+        <h3>${escapeHtml(policy.marketId)} · v ${escapeHtml(policy.version)}</h3>
+        <p>${escapeHtml(policy.metadata.source)} · ${escapeHtml(statusText[policy.status] ?? policy.status)}</p>
+      </div><span class="status-pill ${escapeHtml(policy.status)}">${escapeHtml(statusText[policy.status] ?? policy.status)}</span></header>
+      <p class="proposal-rationale">${escapeHtml((policy.metadata.reviewNotes || []).join("；") || "等待主 Agent 审阅")}</p>
+      ${policy.status === "draft"
+        ? '<div class="proposal-actions"><button class="button secondary" data-policy-action="review">请求主 Agent 审阅</button></div>'
+        : policy.status === "reviewed"
+          ? '<div class="proposal-actions"><button class="button danger" data-policy-action="reject">拒绝</button><button class="button primary" data-policy-action="approve">用户批准并生效</button></div>'
+          : ""}
+    </article>`,
+  ).join("");
+  elements.proposalList.querySelectorAll("[data-policy-action]").forEach((button) => {
+    button.addEventListener("click", () => handleMarketPolicyAction(button));
+  });
 }
 
-async function loadSkillManagement() {
-  elements.skillMessage.textContent = "正在读取运行时 Skill...";
+async function loadMarketPolicyManagement() {
+  elements.policyMessage.textContent = "正在读取 MarketPolicy 外部版本...";
   try {
-    const [skills, proposals] = await Promise.all([
-      request("/api/skills"),
-      request("/api/skill-proposals"),
-    ]);
-    renderSkillCards(skills);
-    renderProposals(proposals);
-    elements.skillMessage.textContent = "";
+    const policies = await request("/api/market-policies");
+    renderPolicyCards(policies);
+    renderProposals(policies);
+    elements.policyMessage.textContent = "";
   } catch (error) {
-    elements.skillMessage.textContent = error.message;
+    elements.policyMessage.textContent = error.message;
   }
 }
 
-async function handleProposalAction(button) {
-  const item = button.closest("[data-proposal-id]");
-  const id = item.dataset.proposalId;
-  const action = button.dataset.proposalAction;
-  const proposedContent = item.querySelector(".proposal-editor").value;
+async function handleMarketPolicyAction(button) {
+  const item = button.closest("[data-market-id]");
+  const marketId = item.dataset.marketId;
+  const version = item.dataset.policyVersion;
+  const action = button.dataset.policyAction;
   button.disabled = true;
   try {
-    if (action === "save") {
-      await request(`/api/skill-proposals/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ proposedContent }),
-      });
-    } else {
-      await request(`/api/skill-proposals/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ proposedContent }),
-      });
-      await request(`/api/skill-proposals/${id}/${action}`, {
-        method: "POST",
-        body: "{}",
-      });
-    }
-    await loadSkillManagement();
+    await request(
+      `/api/market-policies/${encodeURIComponent(marketId)}/${encodeURIComponent(version)}/${action}`,
+      { method: "POST", body: "{}" },
+    );
+    await loadMarketPolicyManagement();
   } catch (error) {
-    elements.skillMessage.textContent = error.message;
+    elements.policyMessage.textContent = error.message;
     button.disabled = false;
   }
 }
 
-async function generateSkillProposal() {
-  elements.generateSkillProposalButton.disabled = true;
-  elements.skillMessage.textContent = "AI 正在汇总任务并生成一项 Skill 提案...";
+async function reviewPendingMarketPolicy() {
+  elements.reviewMarketPolicyButton.disabled = true;
+  elements.policyMessage.textContent = "正在查找待审阅 MarketPolicy...";
   try {
-    let campaignId = campaign?.id;
-    if (!campaignId) {
-      const campaigns = await request("/api/campaigns");
-      campaignId = campaigns[0]?.id;
-    }
-    if (!campaignId) throw new Error("请先完成一次获客任务");
-    await request("/api/skill-proposals/generate", {
-      method: "POST",
-      body: JSON.stringify({ campaignId }),
-    });
-    await loadSkillManagement();
+    const policies = await request("/api/market-policies");
+    const draft = policies.find((policy) => policy.status === "draft");
+    if (!draft) throw new Error("当前没有等待主 Agent 审阅的草稿");
+    await request(
+      `/api/market-policies/${encodeURIComponent(draft.marketId)}/${encodeURIComponent(draft.version)}/review`,
+      { method: "POST", body: "{}" },
+    );
+    await loadMarketPolicyManagement();
   } catch (error) {
-    elements.skillMessage.textContent = error.message;
+    elements.policyMessage.textContent = error.message;
   } finally {
-    elements.generateSkillProposalButton.disabled = false;
+    elements.reviewMarketPolicyButton.disabled = false;
   }
 }
 
@@ -1411,10 +1373,10 @@ elements.exportXlsxButton.addEventListener("click", () =>
 elements.pageTabs.forEach((tab) => {
   tab.addEventListener("click", () => switchPage(tab.dataset.pageTarget));
 });
-elements.refreshSkillsButton.addEventListener("click", loadSkillManagement);
-elements.generateSkillProposalButton.addEventListener(
+elements.refreshPoliciesButton.addEventListener("click", loadMarketPolicyManagement);
+elements.reviewMarketPolicyButton.addEventListener(
   "click",
-  generateSkillProposal,
+  reviewPendingMarketPolicy,
 );
 elements.newOrchestratorButton.addEventListener(
   "click",

@@ -7,18 +7,16 @@ import type {
 import type {
   BusinessRole,
   CampaignInput,
-  CampaignResult,
   CompanyAnalysisResult,
   CompanyCandidate,
   CompanyResearchPacket,
   CountryProfile,
+  MarketPolicy,
   Evidence,
-  MarketSkillSummary,
   OutreachBrief,
   QualificationDecision,
   ResolvedContact,
   SearchPlan,
-  SkillProposalDraft,
 } from "./domain.js";
 import {
   DEFAULT_SEARCH_QUERIES,
@@ -168,8 +166,7 @@ export class DemoAgentRuntime implements AgentRuntime {
   async planSearch(
     input: CampaignInput,
     country: CountryProfile,
-    skill: MarketSkillSummary,
-    _skillInvocation: string,
+    marketPolicy: MarketPolicy,
     context?: CampaignAgentContext,
   ): Promise<AgentResult<SearchPlan>> {
     const started = performance.now();
@@ -209,8 +206,11 @@ export class DemoAgentRuntime implements AgentRuntime {
     const value: SearchPlan = {
       countryId: country.id,
       product: input.product,
-      skillName: skill.name,
-      skillVersion: skill.version,
+      marketPolicyRef: {
+        marketId: marketPolicy.marketId,
+        version: marketPolicy.version,
+        hash: marketPolicy.hash,
+      },
       queries: queryCandidates.slice(0, targetQueries),
     };
     return {
@@ -220,7 +220,7 @@ export class DemoAgentRuntime implements AgentRuntime {
         mode: "demo",
         status: "succeeded",
         steps: [
-          `加载 ${skill.name} Skill`,
+          `加载 ${marketPolicy.marketId}@${marketPolicy.version} 市场规则包`,
           `按预算生成 ${value.queries.length} 条本地化查询`,
         ],
         durationMs: Math.round(performance.now() - started),
@@ -233,37 +233,6 @@ export class DemoAgentRuntime implements AgentRuntime {
     _context?: CampaignAgentContext,
   ): Promise<AgentResult<CompanyAnalysisResult>> {
     const started = performance.now();
-    const research = await this.researchCompany(candidate);
-    const qualification = await this.qualifyCompany(research.value);
-    const outreach = await this.composeOutreach(
-      research.value,
-      qualification.value,
-    );
-    return {
-      value: {
-        research: research.value,
-        qualification: qualification.value,
-        outreach: outreach.value,
-      },
-      trace: {
-        agent: "CompanyAnalysisAgent",
-        mode: "demo",
-        status: "succeeded",
-        steps: [
-          `一次性读取 ${candidate.pages.length} 个已抓取页面`,
-          `整理 ${research.value.evidence.length} 条证据并消歧 ${research.value.contacts.length} 个联系方式`,
-          `完成资格判断与低置信复核：${qualification.value.isQualified ? "合格" : "不合格"}`,
-          `生成触达简报与模板：${outreach.value.templateId}`,
-        ],
-        durationMs: Math.round(performance.now() - started),
-      },
-    };
-  }
-
-  async researchCompany(
-    candidate: CompanyCandidate,
-  ): Promise<AgentResult<CompanyResearchPacket>> {
-    const started = performance.now();
     const evidence = createEvidence(candidate);
     const contacts = resolveContacts(candidate);
     const products = [
@@ -274,7 +243,7 @@ export class DemoAgentRuntime implements AgentRuntime {
       ),
     ];
     const name = canonicalName(candidate);
-    const value: CompanyResearchPacket = {
+    const research: CompanyResearchPacket = {
       companyId: candidate.id,
       canonicalName: name,
       summary: `${name}：${candidate.searchSnippet}`,
@@ -283,27 +252,6 @@ export class DemoAgentRuntime implements AgentRuntime {
       evidence,
       missingInformation: contacts.length === 0 ? ["可靠联系方式"] : [],
     };
-
-    return {
-      value,
-      trace: {
-        agent: "CompanyResearchAgent",
-        mode: "demo",
-        status: "succeeded",
-        steps: [
-          `共享上下文读取 ${candidate.pages.length} 个网站页面`,
-          `整理 ${evidence.length} 条商业证据`,
-          `消歧 ${contacts.length} 个联系方式候选`,
-        ],
-        durationMs: Math.round(performance.now() - started),
-      },
-    };
-  }
-
-  async qualifyCompany(
-    research: CompanyResearchPacket,
-  ): Promise<AgentResult<QualificationDecision>> {
-    const started = performance.now();
     const role = inferRole(research);
     const productEvidence = research.evidence.filter(
       (item) => item.kind === "product",
@@ -319,7 +267,7 @@ export class DemoAgentRuntime implements AgentRuntime {
         ? 0.58
         : Math.min(0.97, 0.76 + productEvidence.length * 0.04);
     const reviewPerformed = confidence < 0.8 || disqualifiedRole;
-    const value: QualificationDecision = {
+    const qualification: QualificationDecision = {
       isQualified:
         !disqualifiedRole &&
         role !== "Unknown" &&
@@ -347,38 +295,13 @@ export class DemoAgentRuntime implements AgentRuntime {
       missingInformation: research.missingInformation,
       reviewPerformed,
     };
-
-    return {
-      value,
-      trace: {
-        agent: "QualificationAgent",
-        mode: "demo",
-        status: "succeeded",
-        steps: [
-          "在共享上下文中完成暂定资格判断",
-          ...(reviewPerformed
-            ? ["触发低置信/淘汰复核并重新检查已有证据"]
-            : []),
-          `提交最终结论：${value.isQualified ? "合格" : "不合格"}`,
-        ],
-        durationMs: Math.round(performance.now() - started),
-      },
-    };
-  }
-
-  async composeOutreach(
-    research: CompanyResearchPacket,
-    qualification: QualificationDecision,
-  ): Promise<AgentResult<OutreachBrief>> {
-    const started = performance.now();
     const printable = research.products.some((product) =>
       /print|mesh|textile/.test(product),
     );
     const templateId = printable ? "printing-media" : "distributor";
     const product = research.products[0] ?? "industrial coated fabrics";
-    const role = qualification.businessRole;
     const evidenceIds = qualification.evidenceIds.slice(0, 4);
-    const value: OutreachBrief = {
+    const outreach: OutreachBrief = {
       headline: `${research.canonicalName} · ${role} · 产品匹配 ${qualification.productFitScore}`,
       whyContact: qualification.isQualified
         ? `该公司与目标产品匹配，且存在${qualification.scaleScore >= 70 ? "较强" : "可验证的"}区域分销或采购线索。`
@@ -407,52 +330,25 @@ export class DemoAgentRuntime implements AgentRuntime {
         "We supply matching coated fabrics for volume buyers. May I send a short catalogue and sample options?",
       evidenceIds,
     };
-
-    return {
-      value,
-      trace: {
-        agent: "OutreachAgent",
-        mode: "demo",
-        status: "succeeded",
-        steps: [
-          "汇总公司研究包与资格结论",
-          `选择模板：${templateId}`,
-          "生成公司简报、Email 与 WhatsApp 草稿",
-        ],
-        durationMs: Math.round(performance.now() - started),
-      },
-    };
-  }
-
-  async proposeSkillUpdate(
-    context: CampaignAgentContext,
-    campaign: CampaignResult,
-  ): Promise<AgentResult<SkillProposalDraft>> {
-    const started = performance.now();
-    const rejected = campaign.leads.filter(
-      (lead) => lead.status === "rejected",
-    );
     return {
       value: {
-        countryId: context.country.id,
-        section: "Exclusions",
-        title: `补充 ${context.country.shortName} 低质量结果识别`,
-        proposedContent:
-          "- Downgrade domains whose official website only describes walk-in retail or repair services and has no wholesale, import, warehouse, branch, or distribution evidence.",
-        rationale: `本次任务有 ${rejected.length} 条线索被判定不合格，建议将重复出现的零售/维修特征明确沉淀。`,
-        evidence: rejected.slice(0, 5).map((lead) => lead.candidate.domain),
+        research,
+        qualification,
+        outreach,
       },
       trace: {
-        agent: "SkillProposalAgent",
+        agent: "CompanyAnalysisAgent",
         mode: "demo",
         status: "succeeded",
         steps: [
-          `读取 ${context.skill.name} Skill`,
-          `汇总 ${campaign.leads.length} 条线索与人工状态`,
-          "生成待人工审批提案",
+          `一次性读取 ${candidate.pages.length} 个已抓取页面`,
+          `整理 ${research.evidence.length} 条证据并消歧 ${research.contacts.length} 个联系方式`,
+          `完成资格判断与低置信复核：${qualification.isQualified ? "合格" : "不合格"}`,
+          `生成触达简报与模板：${outreach.templateId}`,
         ],
         durationMs: Math.round(performance.now() - started),
       },
     };
   }
+
 }

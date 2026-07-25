@@ -1,5 +1,8 @@
 import { resolveMx } from "node:dns/promises";
-import { parsePhoneNumberFromString } from "libphonenumber-js";
+import {
+  parsePhoneNumberFromString,
+  type CountryCode,
+} from "libphonenumber-js";
 import { getDomain } from "tldts";
 import type {
   CompanyCandidate,
@@ -85,7 +88,7 @@ export async function validateContactCandidates(
 
     const phone = parsePhoneNumberFromString(
       contact.value,
-      country.phoneCountryCode,
+      country.phoneCountryCode as CountryCode,
     );
     const countryFormatValid =
       Boolean(phone?.isValid()) && phone?.country === country.phoneCountryCode;

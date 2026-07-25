@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "marketId": "saudi",
+  "searchLocalization": {
+    "languages": ["ar", "en"],
+    "buyerRoleTerms": [
+      "distributor",
+      "importer",
+      "supplier",
+      "wholesaler",
+      "موزع",
+      "مستورد",
+      "مورد",
+      "جملة",
+      "مصنع",
+      "ورشة"
+    ],
+    "queryPatterns": [
+      "{product} distributor {city}",
+      "{verified_local_product_term} importer Saudi Arabia",
+      "{product} wholesaler OR supplier Riyadh",
+      "{product_or_application} fabricator OR factory {city}"
+    ],
+    "translationRestrictions": [
+      "Do not translate technical grades, standards, or product names without evidence."
+    ]
+  },
+  "companyAnalysis": {
+    "identitySignals": [
+      ".sa registrable domain",
+      "+966 public company telephone",
+      "official Saudi city address"
+    ],
+    "legalSuffixSemantics": [
+      "Est., Trading Co., شركة, مؤسسة, Commercial Registration and CR support identity only in company context."
+    ],
+    "buyerSignals": [
+      "distribution, import, fabrication, commercial use, or channel sales of the target product"
+    ],
+    "importAndScaleSignals": [
+      "warehouse, branches, import, global sourcing, OEM, or GCC coverage"
+    ],
+    "falsePositivePatterns": [
+      "general trading or legal suffixes alone are not proof of import capability",
+      "a manufacturer is not a buyer without evidence of use, processing, purchasing, or channel sales"
+    ],
+    "exclusions": [
+      "walk-in retail",
+      "ready-made consumer cover shops",
+      "repair-only services",
+      "social-only profiles",
+      "directories without an official company website"
+    ]
+  },
+  "contactAndOutreach": {
+    "preferredContactTerms": [
+      "sales",
+      "trade",
+      "commercial",
+      "export",
+      "procurement"
+    ],
+    "validationNotes": [
+      "Normalize local mobile prefixes only with Saudi country context.",
+      "Syntax, MX, and country formatting do not prove deliverability or consent."
+    ],
+    "defaultLanguage": "English",
+    "etiquette": [
+      "Use concise professional English unless Arabic is requested.",
+      "Keep initial WhatsApp copy within three sentences."
+    ]
+  }
+}

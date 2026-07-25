@@ -18,7 +18,7 @@ export interface CountryProfile {
   googleDomain: string;
   location: string;
   cities: string[];
-  phoneCountryCode: "AE" | "SA";
+  phoneCountryCode: string;
   callingCode: string;
   domainSuffix: string;
   businessSuffixes: string[];
@@ -35,8 +35,7 @@ export interface SearchPlan {
   countryId: SupportedCountryId;
   product: string;
   queries: SearchQuery[];
-  skillName: string;
-  skillVersion: string;
+  marketPolicyRef?: MarketPolicyRef;
 }
 
 export interface SearchHit {
@@ -282,19 +281,80 @@ export interface CompanyAnalysisResult {
   outreach: OutreachBrief;
 }
 
+export interface CompanyAnalysisCacheEntry {
+  key: string;
+  domain: string;
+  candidateFingerprint: string;
+  decisionFingerprint: string;
+  marketPolicyHash: string;
+  analysisContractVersion: string;
+  modelProvider: string;
+  modelId: string;
+  result: CompanyAnalysisResult;
+  sourceLeadId?: string;
+  createdAt: string;
+}
+
+export interface CompanyEvidenceIndexEntry {
+  key: string;
+  domain: string;
+  pageFingerprint: string;
+  snippets: Array<{
+    ref: string;
+    pageIndex: number;
+    url: string;
+    text: string;
+  }>;
+  duplicatePages: Array<{
+    pageIndex: number;
+    duplicateOf: number;
+  }>;
+  createdAt: string;
+}
+
+export interface AgentUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  cost?: number;
+}
+
+export interface ContextSectionTrace {
+  id: string;
+  source: string;
+  version?: string;
+  trust: "system" | "approved" | "runtime" | "untrusted";
+  priority: "required" | "high" | "normal" | "optional";
+  estimatedTokens: number;
+  included: boolean;
+  truncated?: boolean;
+  reason?: string;
+  contentHash: string;
+}
+
 export interface AgentTrace {
   agent:
     | "CampaignOrchestratorAgent"
     | "SearchPlanningAgent"
-    | "CompanyAnalysisAgent"
-    | "CompanyResearchAgent"
-    | "QualificationAgent"
-    | "OutreachAgent"
-    | "SkillProposalAgent";
-  mode: "demo" | "live";
+    | "CompanyAnalysisAgent";
+  mode: "demo" | "live" | "cache";
   status: "succeeded" | "failed" | "budget_exhausted";
   steps: string[];
   durationMs: number;
+  usage?: AgentUsage;
+  context?: {
+    contextWindow: number;
+    outputReserve: number;
+    safetyMargin: number;
+    estimatedInputTokens: number;
+    sections: ContextSectionTrace[];
+  };
+  cache?: {
+    key: string;
+    sourceLeadId?: string;
+  };
 }
 
 export type LeadStatus =
@@ -335,6 +395,7 @@ export interface CampaignResult {
   discovery?: DiscoveryRun;
   analysisFailures?: CompanyAnalysisFailure[];
   candidateQueue?: CompanyCandidate[];
+  marketPolicyRef?: MarketPolicyRef;
 }
 
 export interface CampaignInput {
@@ -366,8 +427,68 @@ export interface StrategyCustomSection {
   source: "template" | "user" | "agent";
 }
 
-export interface CampaignStrategy {
+export type MarketPolicyStatus =
+  | "draft"
+  | "reviewed"
+  | "approved"
+  | "superseded";
+
+export interface MarketPolicyRef {
+  marketId: SupportedCountryId;
+  version: string;
+  hash: string;
+}
+
+export interface MarketPolicy {
   schemaVersion: 1;
+  marketId: SupportedCountryId;
+  version: string;
+  hash: string;
+  status: MarketPolicyStatus;
+  searchLocalization: {
+    languages: string[];
+    buyerRoleTerms: string[];
+    queryPatterns: string[];
+    translationRestrictions: string[];
+  };
+  companyAnalysis: {
+    identitySignals: string[];
+    legalSuffixSemantics: string[];
+    buyerSignals: string[];
+    importAndScaleSignals: string[];
+    falsePositivePatterns: string[];
+    exclusions: string[];
+  };
+  contactAndOutreach: {
+    preferredContactTerms: string[];
+    validationNotes: string[];
+    defaultLanguage: string;
+    etiquette: string[];
+  };
+  metadata: {
+    source: "builtin" | "generated" | "migrated" | "user";
+    reviewNotes: string[];
+    createdAt: string;
+    reviewedAt?: string;
+    approvedAt?: string;
+  };
+}
+
+export interface MarketPolicyRecord {
+  marketId: SupportedCountryId;
+  version: string;
+  hash: string;
+  status: MarketPolicyStatus;
+  filePath: string;
+  source: MarketPolicy["metadata"]["source"];
+  reviewNotes: string[];
+  createdAt: string;
+  reviewedAt?: string;
+  approvedAt?: string;
+}
+
+export interface CampaignStrategy {
+  schemaVersion: 1 | 2;
   product: string;
   country: string;
   language: string;
@@ -414,8 +535,7 @@ export interface CampaignStrategy {
     generateOutreach: boolean;
   };
   customSections: StrategyCustomSection[];
-  skillName: SupportedCountryId;
-  skillVersion: string;
+  marketPolicyRef?: MarketPolicyRef;
 }
 
 export interface OrchestratorMessage {
@@ -476,43 +596,3 @@ export interface OrchestratorSession {
   createdAt: string;
   updatedAt: string;
 }
-
-export type SkillProposalStatus = "pending" | "approved" | "rejected";
-
-export interface MarketSkillSummary {
-  name: SupportedCountryId;
-  description: string;
-  filePath: string;
-  version: string;
-  updatedAt: string;
-  content: string;
-  keyInformation: {
-    searchConfiguration: string[];
-    queryPatterns: string[];
-    validationSignals: string[];
-    exclusions: string[];
-  };
-}
-
-export interface SkillProposal {
-  id: string;
-  countryId: SupportedCountryId;
-  section: string;
-  title: string;
-  proposedContent: string;
-  rationale: string;
-  evidence: string[];
-  status: SkillProposalStatus;
-  createdAt: string;
-  reviewedAt?: string;
-}
-
-export type SkillProposalDraft = Pick<
-  SkillProposal,
-  | "countryId"
-  | "section"
-  | "title"
-  | "proposedContent"
-  | "rationale"
-  | "evidence"
->;

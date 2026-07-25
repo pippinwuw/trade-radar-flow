@@ -41,8 +41,8 @@
         <button class="page-tab active" data-page-target="workbenchPage">
           获客工作台
         </button>
-        <button class="page-tab" data-page-target="skillsPage">
-          Skill 管理
+        <button class="page-tab" data-page-target="policiesPage">
+          市场规则包
         </button>
       </nav>
 
@@ -261,28 +261,28 @@
       </section>
       </div>
 
-      <section class="page hidden skill-page" id="skillsPage">
-        <header class="skill-page-header">
+      <section class="page hidden policy-page" id="policiesPage">
+        <header class="policy-page-header">
           <div>
-            <p class="eyebrow">pi Agent 运行时知识</p>
-            <h1>Country Skill 管理</h1>
+            <p class="eyebrow">外部版本化 JSON</p>
+            <h1>市场规则包管理</h1>
             <p>
-              查看当前国家搜索与验证规则。AI 只能生成提案，修正并批准后才会写入运行时 Skill。
+              主 Agent 负责审阅国家定制信息；只有用户批准的版本才会进入搜索规划和单公司分析。
             </p>
           </div>
-          <button class="button primary" id="generateSkillProposalButton">
-            根据当前任务生成提案
+          <button class="button primary" id="reviewMarketPolicyButton">
+            审阅待处理版本
           </button>
         </header>
-        <p class="skill-message" id="skillMessage" aria-live="polite"></p>
-        <div class="skill-grid" id="skillCards"></div>
+        <p class="policy-message" id="policyMessage" aria-live="polite"></p>
+        <div class="policy-grid" id="policyCards"></div>
         <section class="proposal-section">
           <div class="section-heading">
             <div>
               <p class="eyebrow">人工审批队列</p>
-              <h2>Skill 更新提案</h2>
+              <h2>MarketPolicy 版本</h2>
             </div>
-            <button class="button secondary" id="refreshSkillsButton">
+            <button class="button secondary" id="refreshPoliciesButton">
               刷新
             </button>
           </div>

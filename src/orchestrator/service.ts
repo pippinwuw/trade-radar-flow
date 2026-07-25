@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { generateSkillProposal } from "../agent-skills/governance.js";
 import type {
   CampaignInput,
   CampaignStrategy,
@@ -20,7 +19,16 @@ import {
   ensureRuntimeMarketCountry,
   type RuntimeMarketCountryInput,
 } from "../countries/runtime-market.js";
-import { getMarketSkillRegistry } from "../agent-skills/registry.js";
+import {
+  approveMarketPolicy,
+  createGeneratedMarketPolicy,
+  getApprovedMarketPolicy,
+  getMarketPolicy,
+  listMarketPolicies,
+  markMarketPolicyReviewed,
+  marketPolicyRef,
+  rejectMarketPolicy,
+} from "../market-policy.js";
 import { AppDatabase, getDatabase } from "../storage/database.js";
 import {
   CampaignOrchestratorAgent,
@@ -109,7 +117,29 @@ export class OrchestratorService {
   }
 
   async prepareTargetCountry(countryInput: string): Promise<void> {
-    if (resolveCountry(countryInput)) return;
+    const existing = resolveCountry(countryInput);
+    if (existing) {
+      try {
+        getApprovedMarketPolicy(existing.id);
+        return;
+      } catch {
+        createGeneratedMarketPolicy(existing, {
+          queryPatterns: ["{product} distributor {city}"],
+          validationSignals: [
+            `official address or telephone in ${existing.displayName}`,
+            `${existing.domainSuffix} company domain`,
+          ],
+          exclusions: [
+            "consumer marketplaces",
+            "directories without an official company website",
+            "unrelated retail or repair-only services",
+          ],
+        });
+        throw new Error(
+          `已导入 ${existing.displayName} 的旧国家配置为 MarketPolicy 草稿；请先让主 Agent 审阅并由用户批准`,
+        );
+      }
+    }
     const generatedProfile =
       await this.mainAgent.bootstrapMarketCountry(countryInput);
     await ensureRuntimeMarketCountry({
@@ -220,8 +250,7 @@ export class OrchestratorService {
         language: session.input.language,
         strategyVersion: session.strategyVersion,
         strategyHash: session.strategyHash,
-        skillName: strategy.skillName,
-        skillVersion: strategy.skillVersion,
+        marketPolicyRef: strategy.marketPolicyRef,
         budget: strategy.budget,
       },
       { sessionId: session.id },
@@ -240,6 +269,73 @@ export class OrchestratorService {
 
   listSessions(): OrchestratorSession[] {
     return this.database.listOrchestratorSessions();
+  }
+
+  listMarketPolicies(marketId?: string) {
+    return listMarketPolicies(marketId);
+  }
+
+  getMarketPolicy(marketId: string, version: string) {
+    return getMarketPolicy(marketId, version);
+  }
+
+  async reviewMarketPolicy(marketId: string, version: string) {
+    const policy = getMarketPolicy(marketId, version);
+    const notes = await this.mainAgent.reviewMarketPolicy(policy);
+    return markMarketPolicyReviewed(marketId, version, notes);
+  }
+
+  approveMarketPolicy(marketId: string, version: string) {
+    const approved = approveMarketPolicy(marketId, version);
+    for (const session of this.database.listOrchestratorSessions()) {
+      let sessionCountryId: string;
+      try {
+        sessionCountryId = requireCountry(session.strategy.country).id;
+      } catch {
+        continue;
+      }
+      if (
+        sessionCountryId !== marketId ||
+        session.strategy.marketPolicyRef?.hash === approved.hash ||
+        session.status === "running" ||
+        session.status === "awaiting_report_review" ||
+        session.status === "completed"
+      ) {
+        continue;
+      }
+      const strategy = clampStrategy({
+        ...session.strategy,
+        schemaVersion: 2,
+        marketPolicyRef: marketPolicyRef(approved),
+        search: { ...session.strategy.search, queries: [] },
+      });
+      const updated: OrchestratorSession = {
+        ...session,
+        strategy,
+        strategyVersion: session.strategyVersion + 1,
+        strategyHash: strategyHash(strategy),
+        status: "drafting",
+        approvedStrategyHash: undefined,
+        approvalId: undefined,
+        approvedAt: undefined,
+        campaignId: undefined,
+        report: undefined,
+        error: undefined,
+        updatedAt: now(),
+      };
+      this.save(updated);
+      this.database.saveStrategyVersion(
+        updated.id,
+        updated.strategyVersion,
+        updated.strategyHash,
+        updated.strategy,
+      );
+    }
+    return approved;
+  }
+
+  rejectMarketPolicy(marketId: string, version: string) {
+    return rejectMarketPolicy(marketId, version);
   }
 
   getSessionView(id: string): {
@@ -321,11 +417,11 @@ export class OrchestratorService {
     generatedProfile?: RuntimeMarketCountryInput,
   ): Promise<OrchestratorSession> {
     let profile = resolveCountry(countryInput);
-    let skill;
+    let marketPolicy;
     if (!profile) {
       if (!generatedProfile) {
         throw new Error(
-          `国家“${countryInput}”尚未注册，必须先提供完整国家配置以生成运行时 Market Skill`,
+          `国家“${countryInput}”尚未注册，必须先提供完整国家配置以生成 MarketPolicy 草稿`,
         );
       }
       const generated = await ensureRuntimeMarketCountry({
@@ -333,9 +429,14 @@ export class OrchestratorService {
         aliases: [countryInput, ...generatedProfile.aliases],
       });
       profile = generated.profile;
-      skill = generated.skill;
+      marketPolicy = generated.marketPolicy;
     } else {
-      skill = (await getMarketSkillRegistry()).getSummary(profile.id);
+      marketPolicy = getApprovedMarketPolicy(profile.id);
+    }
+    if (marketPolicy.status !== "approved") {
+      throw new Error(
+        `市场规则包 ${profile.id}@${marketPolicy.version} 等待用户批准`,
+      );
     }
     const previous = requireCountry(this.getSession(sessionId).strategy.country);
     return this.updateStrategy(sessionId, (strategy) => ({
@@ -351,8 +452,8 @@ export class OrchestratorService {
         cities: [...profile.cities.slice(0, 3)],
         queries: [],
       },
-      skillName: profile.id,
-      skillVersion: skill.version,
+      schemaVersion: 2,
+      marketPolicyRef: marketPolicyRef(marketPolicy),
       customSections: strategy.customSections.filter(
         (section) => !section.id.startsWith("country-rerun:"),
       ),
@@ -462,13 +563,6 @@ export class OrchestratorService {
             this.getCountrySearchHistory(country),
           setTargetCountry: (country, generatedProfile) =>
             this.setTargetCountry(sessionId, country, generatedProfile),
-          createSkillProposal: async () => {
-            const session = this.getSession(sessionId);
-            if (!session.campaignId) {
-              throw new Error("当前会话还没有任务结果");
-            }
-            return generateSkillProposal(session.campaignId);
-          },
           resumeFailedExecution: () =>
             this.resumeExecution(sessionId, false),
         }),

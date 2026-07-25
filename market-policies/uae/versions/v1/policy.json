@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "marketId": "uae",
+  "searchLocalization": {
+    "languages": ["en", "ar"],
+    "buyerRoleTerms": [
+      "distributor",
+      "importer",
+      "wholesaler",
+      "supplier",
+      "fabricator"
+    ],
+    "queryPatterns": [
+      "{product} distributor {city}",
+      "{verified_local_product_term} importer UAE",
+      "{product} wholesaler OR supplier Dubai"
+    ],
+    "translationRestrictions": [
+      "Do not invent Arabic translations for technical grades, standards, materials, or brands."
+    ]
+  },
+  "companyAnalysis": {
+    "identitySignals": [
+      ".ae registrable domain",
+      "+971 public company telephone",
+      "official UAE city or emirate address"
+    ],
+    "legalSuffixSemantics": [
+      "LLC, FZE, FZCO and PJSC support identity only when tied to the same official company."
+    ],
+    "buyerSignals": [
+      "distribution, wholesale, fabrication, commercial use, or channel sales of the target product"
+    ],
+    "importAndScaleSignals": [
+      "warehouse, branch, import, global sourcing, OEM, or regional Gulf coverage"
+    ],
+    "falsePositivePatterns": [
+      "general trading language alone is not proof of import capability",
+      "a manufacturer is not a buyer without evidence of use, processing, purchasing, or channel sales"
+    ],
+    "exclusions": [
+      "pure retail shops",
+      "consumer marketplaces",
+      "repair-only services",
+      "directories without an official company website"
+    ]
+  },
+  "contactAndOutreach": {
+    "preferredContactTerms": ["sales", "trade", "commercial", "export"],
+    "validationNotes": [
+      "MX and valid syntax do not prove deliverability.",
+      "Prefer a public address on the same registrable company domain."
+    ],
+    "defaultLanguage": "English",
+    "etiquette": [
+      "Use concise professional language and evidence-backed relevance.",
+      "Do not claim a purchasing plan or unapproved seller capabilities."
+    ]
+  }
+}

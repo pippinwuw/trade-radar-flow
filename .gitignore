@@ -17,9 +17,9 @@ logs/
 *.log
 
 # Generated exports and workspace artifacts
-output/*
+output/
 !output/.gitkeep
-workspace/*
+workspace/
 !workspace/.gitkeep
 doc/*.pdf
 

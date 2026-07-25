@@ -1,96 +1,12 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type {
   CountryProfile,
   SupportedCountryId,
 } from "../domain.js";
+import { marketPolicyDataDirectory } from "../market-policy.js";
 
-const builtInProfiles: Record<string, CountryProfile> = {
-  uae: {
-    id: "uae",
-    displayName: "United Arab Emirates",
-    shortName: "UAE",
-    aliases: [
-      "uae",
-      "ae",
-      "united arab emirates",
-      "阿联酋",
-      "迪拜",
-      "dubai",
-    ],
-    countryNameAliases: ["United Arab Emirates", "UAE", "الإمارات العربية المتحدة"],
-    gl: "ae",
-    defaultHl: "en",
-    googleDomain: "google.ae",
-    location: "United Arab Emirates",
-    cities: [
-      "Dubai",
-      "Abu Dhabi",
-      "Sharjah",
-      "Ajman",
-      "Ras Al Khaimah",
-    ],
-    phoneCountryCode: "AE",
-    callingCode: "+971",
-    domainSuffix: ".ae",
-    businessSuffixes: ["LLC", "FZE", "FZCO", "PJSC"],
-  },
-  saudi: {
-    id: "saudi",
-    displayName: "Saudi Arabia",
-    shortName: "KSA",
-    aliases: [
-      "saudi",
-      "sa",
-      "ksa",
-      "saudi arabia",
-      "沙特",
-      "沙特阿拉伯",
-      "riyadh",
-      "利雅得",
-    ],
-    countryNameAliases: [
-      "Saudi Arabia",
-      "KSA",
-      "Kingdom of Saudi Arabia",
-      "المملكة العربية السعودية",
-      "السعودية",
-    ],
-    gl: "sa",
-    defaultHl: "ar",
-    googleDomain: "google.com.sa",
-    location: "Saudi Arabia",
-    cities: [
-      "Riyadh",
-      "Jeddah",
-      "Mecca",
-      "Medina",
-      "Dammam",
-      "Khobar",
-      "Jubail",
-      "Buraydah",
-      "Hofuf",
-      "Tabuk",
-      "Abha",
-      "Khamis Mushait",
-      "Hail",
-    ],
-    phoneCountryCode: "SA",
-    callingCode: "+966",
-    domainSuffix: ".sa",
-    businessSuffixes: [
-      "Trading Co.",
-      "Est.",
-      "Commercial Registration",
-      "CR",
-      "شركة",
-      "مؤسسة",
-    ],
-  },
-};
-const profiles = new Map<SupportedCountryId, CountryProfile>(
-  Object.values(builtInProfiles).map((profile) => [profile.id, profile]),
-);
+const profiles = new Map<SupportedCountryId, CountryProfile>();
 
 const aliasIndex = new Map<string, CountryProfile>();
 function indexProfile(profile: CountryProfile): void {
@@ -101,8 +17,6 @@ function indexProfile(profile: CountryProfile): void {
     aliasIndex.set(alias.trim().toLowerCase(), profile);
   }
 }
-
-for (const profile of profiles.values()) indexProfile(profile);
 
 export function registerCountryProfile(profile: CountryProfile): CountryProfile {
   if (!/^[a-z][a-z0-9-]{1,39}$/.test(profile.id)) {
@@ -158,12 +72,7 @@ export function registerCountryProfile(profile: CountryProfile): CountryProfile 
   return normalized;
 }
 
-function loadGeneratedProfiles(): void {
-  const directory = path.join(
-    process.cwd(),
-    "data",
-    "generated-market-skills",
-  );
+function loadProfilesFrom(directory: string, strict = false): void {
   let entries;
   try {
     entries = readdirSync(directory, { withFileTypes: true });
@@ -172,18 +81,33 @@ function loadGeneratedProfiles(): void {
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
+    const profilePath = path.join(directory, entry.name, "profile.json");
+    if (!existsSync(profilePath)) continue;
     try {
       const profile = JSON.parse(
-        readFileSync(path.join(directory, entry.name, "profile.json"), "utf8"),
+        readFileSync(profilePath, "utf8"),
       ) as CountryProfile;
       registerCountryProfile(profile);
-    } catch {
+    } catch (error) {
+      if (strict) {
+        throw new Error(
+          `外部 CountryProfile 无效：${profilePath}`,
+          { cause: error },
+        );
+      }
       // Invalid generated profiles are ignored; pipeline will report unsupported country.
     }
   }
 }
 
-loadGeneratedProfiles();
+loadProfilesFrom(path.join(process.cwd(), "market-policies"), true);
+loadProfilesFrom(
+  path.join(marketPolicyDataDirectory(), "profiles"),
+);
+// Read-only compatibility for profiles created before MarketPolicy migration.
+loadProfilesFrom(
+  path.join(process.cwd(), "data", "generated-market-skills"),
+);
 
 export function listCountryProfiles(): CountryProfile[] {
   return [...profiles.values()];
@@ -203,7 +127,7 @@ export function requireCountry(input: string): CountryProfile {
   const country = resolveCountry(input);
   if (!country) {
     throw new Error(
-      `国家“${input}”尚未注册；请先生成该国家的运行时 Market Skill`,
+      `国家“${input}”尚未注册；请先生成该国家的 MarketPolicy 草稿`,
     );
   }
   return country;

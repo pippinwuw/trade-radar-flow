@@ -55,6 +55,41 @@ export interface CompanyAnalysisDraft {
   };
 }
 
+export interface CompanyAnalysisSubmissionV2 {
+  research: {
+    canonicalName: string;
+    summary: string;
+    products: string[];
+    contacts: Array<{
+      contactRef: string;
+      label: string;
+      confidence: number;
+    }>;
+    facts: Array<{
+      kind: CompanyResearchPacket["evidence"][number]["kind"];
+      label: string;
+      value: string;
+      evidenceRef: string;
+      confidence: number;
+    }>;
+    missingInformation: string[];
+  };
+  qualification: Omit<
+    QualificationDecision,
+    "evidenceIds" | "reviewPerformed"
+  > & {
+    evidenceRefs: string[];
+    riskAssessment: string[];
+  };
+  outreach: Omit<
+    OutreachBrief,
+    "keyEvidence" | "recommendedContact" | "evidenceIds"
+  > & {
+    evidenceRefs: string[];
+    recommendedContactRef: string;
+  };
+}
+
 const TYPOGRAPHY_EQUIVALENTS: Readonly<Record<string, string>> = {
   "\u00a0": " ",
   "\u2018": "'",
@@ -166,6 +201,148 @@ export function buildContactCatalog(
     ref: `c${index}`,
     contact,
   }));
+}
+
+export function validateAndNormalizeCompanyAnalysisV2(
+  submitted: CompanyAnalysisSubmissionV2,
+  candidate: CompanyCandidate,
+  readEvidenceRefs: ReadonlySet<string>,
+  catalog = buildEvidenceCatalog(candidate.pages),
+  contactCatalog = buildContactCatalog(candidate.contactCandidates),
+): CompanyAnalysisResult {
+  const issues: string[] = [];
+  const snippetByRef = new Map(catalog.map((snippet) => [snippet.ref, snippet]));
+  const contactByRef = new Map(
+    contactCatalog.map(({ ref, contact }) => [ref, contact]),
+  );
+  const normalizedEvidence = submitted.research.facts.map((fact, index) => {
+    const snippet = snippetByRef.get(fact.evidenceRef);
+    if (!snippet || !readEvidenceRefs.has(fact.evidenceRef)) {
+      issues.push(`事实引用未读取或不存在：${fact.evidenceRef}`);
+    }
+    return {
+      id: `ev-${index + 1}`,
+      kind: fact.kind,
+      label: fact.label,
+      value: fact.value,
+      quote: snippet?.text ?? "",
+      sourceUrl: snippet?.url ?? "",
+      confidence: fact.confidence,
+    };
+  });
+  const evidenceIdByRef = new Map(
+    submitted.research.facts.map((fact, index) => [
+      fact.evidenceRef,
+      `ev-${index + 1}`,
+    ]),
+  );
+  const resolveEvidenceIds = (refs: readonly string[], field: string) =>
+    [...new Set(refs)].flatMap((ref) => {
+      const id = evidenceIdByRef.get(ref);
+      if (!id) {
+        issues.push(`${field} 引用了未选择的事实：${ref}`);
+        return [];
+      }
+      return [id];
+    });
+  const normalizedContacts: ResolvedContact[] =
+    submitted.research.contacts.flatMap((selection) => {
+      const contact = contactByRef.get(selection.contactRef);
+      if (!contact) {
+        issues.push(`联系人引用不存在：${selection.contactRef}`);
+        return [];
+      }
+      return [
+        {
+          type: contact.type,
+          value: contact.value,
+          label: selection.label,
+          confidence: selection.confidence,
+          sourceUrl: contact.sourceUrl,
+          verified: false,
+        },
+      ];
+    });
+  const qualificationEvidenceIds = resolveEvidenceIds(
+    submitted.qualification.evidenceRefs,
+    "qualification",
+  );
+  const outreachEvidenceIds = resolveEvidenceIds(
+    submitted.outreach.evidenceRefs,
+    "outreach",
+  );
+  if (
+    (submitted.qualification.confidence < 0.8 ||
+      !submitted.qualification.isQualified) &&
+    submitted.qualification.riskAssessment.length === 0
+  ) {
+    issues.push("低置信或淘汰结论必须提供 riskAssessment");
+  }
+  const recommendedContact =
+    submitted.outreach.recommendedContactRef === "none"
+      ? undefined
+      : contactByRef.get(submitted.outreach.recommendedContactRef);
+  if (
+    submitted.outreach.recommendedContactRef !== "none" &&
+    (!recommendedContact ||
+      !submitted.research.contacts.some(
+        (contact) =>
+          contact.contactRef === submitted.outreach.recommendedContactRef,
+      ))
+  ) {
+    issues.push("推荐联系人必须来自 research.contacts");
+  }
+  if (issues.length) throw new CompanyAnalysisValidationError(issues);
+
+  return {
+    research: {
+      companyId: candidate.id,
+      canonicalName: submitted.research.canonicalName,
+      summary: submitted.research.summary,
+      products: submitted.research.products,
+      contacts: normalizedContacts,
+      evidence: normalizedEvidence,
+      missingInformation: submitted.research.missingInformation,
+    },
+    qualification: {
+      isQualified: submitted.qualification.isQualified,
+      businessRole: submitted.qualification.businessRole,
+      productFitScore: submitted.qualification.productFitScore,
+      scaleScore: submitted.qualification.scaleScore,
+      importCapability: submitted.qualification.importCapability,
+      confidence: submitted.qualification.confidence,
+      reasons: submitted.qualification.reasons,
+      evidenceIds: qualificationEvidenceIds,
+      missingInformation: submitted.qualification.missingInformation,
+      reviewPerformed:
+        submitted.qualification.confidence < 0.8 ||
+        !submitted.qualification.isQualified
+          ? submitted.qualification.riskAssessment.length > 0
+          : true,
+    },
+    outreach: {
+      headline: submitted.outreach.headline,
+      whyContact: submitted.outreach.whyContact,
+      productFit: submitted.outreach.productFit,
+      keyEvidence: outreachEvidenceIds.flatMap((id) => {
+        const evidence = normalizedEvidence.find((item) => item.id === id);
+        return evidence?.quote ? [evidence.quote] : [];
+      }),
+      risk: [
+        submitted.outreach.risk,
+        ...submitted.qualification.riskAssessment,
+      ]
+        .filter(Boolean)
+        .join("；"),
+      recommendedContact: recommendedContact?.value ?? "",
+      templateId: submitted.outreach.templateId,
+      templateReason: submitted.outreach.templateReason,
+      emailSubject: submitted.outreach.emailSubject,
+      emailBody: submitted.outreach.emailBody,
+      whatsappBody: submitted.outreach.whatsappBody,
+      evidenceIds: outreachEvidenceIds,
+    },
+  };
 }
 
 export function validateAndNormalizeCompanyAnalysis(

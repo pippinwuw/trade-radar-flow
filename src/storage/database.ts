@@ -4,10 +4,13 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   CampaignResult,
   CampaignStrategy,
+  CompanyAnalysisCacheEntry,
+  CompanyEvidenceIndexEntry,
+  LeadRecord,
+  MarketPolicyRecord,
+  MarketPolicyStatus,
   OrchestratorMessage,
   OrchestratorSession,
-  SkillProposal,
-  SkillProposalStatus,
 } from "../domain.js";
 
 function json<T>(value: string): T {
@@ -136,7 +139,88 @@ export class AppDatabase {
         approved_at TEXT,
         PRIMARY KEY(session_id, version)
       );
+
+      CREATE TABLE IF NOT EXISTS country_context_versions (
+        country_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        context_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT,
+        approved_at TEXT,
+        PRIMARY KEY(country_id, version)
+      );
+
+      CREATE INDEX IF NOT EXISTS country_context_status_idx
+        ON country_context_versions(country_id, status, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS market_policy_versions (
+        market_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        source TEXT NOT NULL,
+        review_notes_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT,
+        approved_at TEXT,
+        PRIMARY KEY(market_id, version)
+      );
+
+      CREATE INDEX IF NOT EXISTS market_policy_status_idx
+        ON market_policy_versions(market_id, status, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS app_migrations (
+        migration_id TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS company_analysis_cache (
+        cache_key TEXT PRIMARY KEY,
+        domain TEXT NOT NULL,
+        candidate_fingerprint TEXT NOT NULL,
+        decision_fingerprint TEXT NOT NULL,
+        market_policy_hash TEXT NOT NULL,
+        analysis_contract_version TEXT NOT NULL,
+        model_provider TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        source_lead_id TEXT,
+        result_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS company_analysis_cache_domain_idx
+        ON company_analysis_cache(domain, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS company_evidence_indexes (
+        index_key TEXT PRIMARY KEY,
+        domain TEXT NOT NULL,
+        page_fingerprint TEXT NOT NULL,
+        index_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS company_evidence_indexes_page_idx
+        ON company_evidence_indexes(domain, page_fingerprint);
     `);
+    const cacheColumns = this.database
+      .prepare("PRAGMA table_info(company_analysis_cache)")
+      .all()
+      .map((row) => String(row.name));
+    if (!cacheColumns.includes("market_policy_hash")) {
+      this.database.exec(
+        "ALTER TABLE company_analysis_cache ADD COLUMN market_policy_hash TEXT",
+      );
+      if (cacheColumns.includes("country_context_hash")) {
+        this.database.exec(
+          `UPDATE company_analysis_cache
+           SET market_policy_hash = country_context_hash
+           WHERE market_policy_hash IS NULL`,
+        );
+      }
+    }
   }
 
   saveOrchestratorSession(session: OrchestratorSession): void {
@@ -353,6 +437,225 @@ export class AppDatabase {
       : undefined;
   }
 
+  listLeadHistoryByDomain(domain: string, limit = 10): LeadRecord[] {
+    return this.database
+      .prepare(
+        `SELECT data_json FROM leads
+         WHERE lower(domain) = lower(?)
+         ORDER BY rowid DESC LIMIT ?`,
+      )
+      .all(domain, Math.max(1, Math.floor(limit)))
+      .map((row) => json<LeadRecord>(String(row.data_json)));
+  }
+
+  saveMarketPolicyRecord(record: MarketPolicyRecord): void {
+    this.database
+      .prepare(
+        `INSERT INTO market_policy_versions (
+           market_id, version, hash, status, file_path, source,
+           review_notes_json, created_at, reviewed_at, approved_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(market_id, version) DO UPDATE SET
+           hash = excluded.hash,
+           status = excluded.status,
+           file_path = excluded.file_path,
+           source = excluded.source,
+           review_notes_json = excluded.review_notes_json,
+           reviewed_at = excluded.reviewed_at,
+           approved_at = excluded.approved_at`,
+      )
+      .run(
+        record.marketId,
+        record.version,
+        record.hash,
+        record.status,
+        record.filePath,
+        record.source,
+        JSON.stringify(record.reviewNotes),
+        record.createdAt,
+        record.reviewedAt ?? null,
+        record.approvedAt ?? null,
+      );
+  }
+
+  listMarketPolicyRecords(marketId?: string): MarketPolicyRecord[] {
+    const rows = marketId
+      ? this.database
+          .prepare(
+            `SELECT * FROM market_policy_versions
+             WHERE market_id = ? ORDER BY created_at DESC`,
+          )
+          .all(marketId)
+      : this.database
+          .prepare(
+            `SELECT * FROM market_policy_versions
+             ORDER BY market_id, created_at DESC`,
+          )
+          .all();
+    return rows.map((row) => ({
+      marketId: String(row.market_id),
+      version: String(row.version),
+      hash: String(row.hash),
+      status: String(row.status) as MarketPolicyStatus,
+      filePath: String(row.file_path),
+      source: String(row.source) as MarketPolicyRecord["source"],
+      reviewNotes: json<string[]>(String(row.review_notes_json)),
+      createdAt: String(row.created_at),
+      reviewedAt: row.reviewed_at ? String(row.reviewed_at) : undefined,
+      approvedAt: row.approved_at ? String(row.approved_at) : undefined,
+    }));
+  }
+
+  getMarketPolicyRecord(
+    marketId: string,
+    version: string,
+  ): MarketPolicyRecord | undefined {
+    return this.listMarketPolicyRecords(marketId).find(
+      (record) => record.version === version,
+    );
+  }
+
+  getMarketPolicyRecordByStatus(
+    marketId: string,
+    status: MarketPolicyStatus,
+  ): MarketPolicyRecord | undefined {
+    return this.listMarketPolicyRecords(marketId).find(
+      (record) => record.status === status,
+    );
+  }
+
+  supersedeApprovedMarketPolicies(
+    marketId: string,
+    exceptVersion: string,
+  ): void {
+    const rows = this.listMarketPolicyRecords(marketId).filter(
+      (record) =>
+        record.status === "approved" && record.version !== exceptVersion,
+    );
+    for (const record of rows) {
+      this.saveMarketPolicyRecord({ ...record, status: "superseded" });
+    }
+  }
+
+  listLegacyCountryContextJson(): string[] {
+    return this.database
+      .prepare(
+        `SELECT context_json FROM country_context_versions
+         ORDER BY country_id, created_at`,
+      )
+      .all()
+      .map((row) => String(row.context_json));
+  }
+
+  isMigrationApplied(migrationId: string): boolean {
+    return Boolean(
+      this.database
+        .prepare(
+          "SELECT migration_id FROM app_migrations WHERE migration_id = ?",
+        )
+        .get(migrationId),
+    );
+  }
+
+  markMigrationApplied(migrationId: string): void {
+    this.database
+      .prepare(
+        `INSERT OR IGNORE INTO app_migrations (migration_id, applied_at)
+         VALUES (?, ?)`,
+      )
+      .run(migrationId, new Date().toISOString());
+  }
+
+  getCompanyAnalysisCache(
+    key: string,
+  ): CompanyAnalysisCacheEntry | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT result_json FROM company_analysis_cache WHERE cache_key = ?`,
+      )
+      .get(key);
+    return row
+      ? json<CompanyAnalysisCacheEntry>(String(row.result_json))
+      : undefined;
+  }
+
+  listCompanyAnalysisHistory(
+    domain: string,
+    limit = 10,
+  ): CompanyAnalysisCacheEntry[] {
+    return this.database
+      .prepare(
+        `SELECT result_json FROM company_analysis_cache
+         WHERE domain = ? ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(domain.toLowerCase(), Math.max(1, Math.floor(limit)))
+      .map((row) =>
+        json<CompanyAnalysisCacheEntry>(String(row.result_json)),
+      );
+  }
+
+  putCompanyAnalysisCache(entry: CompanyAnalysisCacheEntry): void {
+    this.database
+      .prepare(
+        `INSERT INTO company_analysis_cache (
+           cache_key, domain, candidate_fingerprint, decision_fingerprint,
+           market_policy_hash, analysis_contract_version, model_provider,
+           model_id, source_lead_id, result_json, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(cache_key) DO UPDATE SET
+           result_json = excluded.result_json,
+           source_lead_id = excluded.source_lead_id,
+           created_at = excluded.created_at`,
+      )
+      .run(
+        entry.key,
+        entry.domain.toLowerCase(),
+        entry.candidateFingerprint,
+        entry.decisionFingerprint,
+        entry.marketPolicyHash,
+        entry.analysisContractVersion,
+        entry.modelProvider,
+        entry.modelId,
+        entry.sourceLeadId ?? null,
+        JSON.stringify(entry),
+        entry.createdAt,
+      );
+  }
+
+  getCompanyEvidenceIndex(
+    domain: string,
+    pageFingerprint: string,
+  ): CompanyEvidenceIndexEntry | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT index_json FROM company_evidence_indexes
+         WHERE domain = ? AND page_fingerprint = ?`,
+      )
+      .get(domain.toLowerCase(), pageFingerprint);
+    return row
+      ? json<CompanyEvidenceIndexEntry>(String(row.index_json))
+      : undefined;
+  }
+
+  putCompanyEvidenceIndex(entry: CompanyEvidenceIndexEntry): void {
+    this.database
+      .prepare(
+        `INSERT INTO company_evidence_indexes (
+           index_key, domain, page_fingerprint, index_json, created_at
+         ) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(index_key) DO UPDATE SET
+           index_json = excluded.index_json,
+           created_at = excluded.created_at`,
+      )
+      .run(
+        entry.key,
+        entry.domain.toLowerCase(),
+        entry.pageFingerprint,
+        JSON.stringify(entry),
+        entry.createdAt,
+      );
+  }
+
   getSearchCache<T>(key: string): T | undefined {
     const row = this.database
       .prepare(
@@ -381,103 +684,6 @@ export class AppDatabase {
         JSON.stringify(value),
         createdAt.toISOString(),
         expiresAt.toISOString(),
-      );
-  }
-
-  createSkillProposal(proposal: SkillProposal): void {
-    this.database
-      .prepare(
-        `INSERT INTO skill_proposals (
-          id, country_id, section, title, proposed_content, rationale,
-          evidence_json, status, created_at, reviewed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        proposal.id,
-        proposal.countryId,
-        proposal.section,
-        proposal.title,
-        proposal.proposedContent,
-        proposal.rationale,
-        JSON.stringify(proposal.evidence),
-        proposal.status,
-        proposal.createdAt,
-        proposal.reviewedAt ?? null,
-      );
-  }
-
-  listSkillProposals(): SkillProposal[] {
-    return this.database
-      .prepare(
-        `SELECT * FROM skill_proposals
-         ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, created_at DESC`,
-      )
-      .all()
-      .map((row) => ({
-        id: String(row.id),
-        countryId: String(row.country_id) as SkillProposal["countryId"],
-        section: String(row.section),
-        title: String(row.title),
-        proposedContent: String(row.proposed_content),
-        rationale: String(row.rationale),
-        evidence: json<string[]>(String(row.evidence_json)),
-        status: String(row.status) as SkillProposalStatus,
-        createdAt: String(row.created_at),
-        reviewedAt: row.reviewed_at ? String(row.reviewed_at) : undefined,
-      }));
-  }
-
-  getSkillProposal(id: string): SkillProposal | undefined {
-    return this.listSkillProposals().find((proposal) => proposal.id === id);
-  }
-
-  updateSkillProposal(
-    id: string,
-    patch: {
-      proposedContent?: string;
-      status?: SkillProposalStatus;
-      reviewedAt?: string;
-    },
-  ): SkillProposal | undefined {
-    const current = this.getSkillProposal(id);
-    if (!current) return undefined;
-    const next = {
-      ...current,
-      ...patch,
-    };
-    this.database
-      .prepare(
-        `UPDATE skill_proposals
-         SET proposed_content = ?, status = ?, reviewed_at = ?
-         WHERE id = ?`,
-      )
-      .run(
-        next.proposedContent,
-        next.status,
-        next.reviewedAt ?? null,
-        id,
-      );
-    return next;
-  }
-
-  saveSkillVersion(
-    countryId: string,
-    version: string,
-    content: string,
-    proposalId?: string,
-  ): void {
-    this.database
-      .prepare(
-        `INSERT OR IGNORE INTO skill_versions
-          (country_id, version, content, created_at, proposal_id)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(
-        countryId,
-        version,
-        content,
-        new Date().toISOString(),
-        proposalId ?? null,
       );
   }
 

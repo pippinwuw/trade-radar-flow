@@ -1,0 +1,33 @@
+{
+  "id": "uae",
+  "displayName": "United Arab Emirates",
+  "shortName": "UAE",
+  "aliases": [
+    "uae",
+    "ae",
+    "united arab emirates",
+    "阿联酋",
+    "迪拜",
+    "dubai"
+  ],
+  "countryNameAliases": [
+    "United Arab Emirates",
+    "UAE",
+    "الإمارات العربية المتحدة"
+  ],
+  "gl": "ae",
+  "defaultHl": "en",
+  "googleDomain": "google.ae",
+  "location": "United Arab Emirates",
+  "cities": [
+    "Dubai",
+    "Abu Dhabi",
+    "Sharjah",
+    "Ajman",
+    "Ras Al Khaimah"
+  ],
+  "phoneCountryCode": "AE",
+  "callingCode": "+971",
+  "domainSuffix": ".ae",
+  "businessSuffixes": ["LLC", "FZE", "FZCO", "PJSC"]
+}
