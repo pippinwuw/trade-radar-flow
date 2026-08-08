@@ -17,6 +17,11 @@ import type {
 } from "../domain.js";
 import { validateContactCandidates } from "../validation/contact-validator.js";
 import { validateCompanyCountry } from "../validation/country-validator.js";
+import {
+  evaluatePreAnalysisGate,
+  evaluateSearchSnippetGate,
+  resolvePreAnalysisGateConfig,
+} from "../validation/pre-analysis-gate.js";
 import { planCampaignSearch } from "./query-planner.js";
 import { buildCampaignAgentContext } from "./query-planner.js";
 import { SerperClient } from "./serper-client.js";
@@ -232,6 +237,8 @@ export async function executeDiscoveryRound({
     crawlSucceeded: 0,
     crawlFailed: 0,
     countryRejected: 0,
+    preAnalysisRejected: 0,
+    snippetGateRejected: 0,
     crawlCacheHits: 0,
     analysisSucceeded: 0,
     analysisFailed: 0,
@@ -265,10 +272,12 @@ export async function executeDiscoveryRound({
   const seenDomains = new Set(
     progress.seenDomains.map((domain) => domain.toLowerCase()),
   );
+  const preAnalysisConfig = resolvePreAnalysisGateConfig(strategy);
   const accepted = new Map<string, SearchHit>();
   const skipped: DiscoveryRun["skipped"] = [];
   let duplicateDomainCount = 0;
   let excludedHitCount = 0;
+  let snippetGateRejected = 0;
   for (const hit of response.hits) {
     const domain = hit.domain.toLowerCase();
     if (isExcludedSearchHit(hit, excludedDomains)) {
@@ -291,6 +300,24 @@ export async function executeDiscoveryRound({
       });
       continue;
     }
+    const snippetGate = evaluateSearchSnippetGate(hit, context, preAnalysisConfig);
+    if (snippetGate.skip) {
+      snippetGateRejected += 1;
+      seenDomains.add(domain);
+      progress.domainRepeatCounts[domain] ??= 0;
+      skipped.push({
+        url: hit.link,
+        reason: snippetGate.reason ?? "搜索摘要预筛未通过",
+      });
+      logger.info("discovery.round.candidate.snippet_gate_rejected", undefined, {
+        roundIndex,
+        domain: hit.domain,
+        productHits: snippetGate.productHits,
+        buyerHits: snippetGate.buyerHits,
+        exclusionHits: snippetGate.exclusionHits,
+      });
+      continue;
+    }
     accepted.set(domain, hit);
   }
   const newHits = [...accepted.values()];
@@ -303,6 +330,7 @@ export async function executeDiscoveryRound({
   round.rawHitCount = response.hits.length;
   round.duplicateDomainCount = duplicateDomainCount;
   round.excludedHitCount = excludedHitCount;
+  round.snippetGateRejected = snippetGateRejected;
   round.newDomainCount = newHits.length;
   round.newDomains = newHits.map((hit) => hit.domain);
   round.cacheHit = response.cacheHit;
@@ -333,6 +361,7 @@ export async function executeDiscoveryRound({
   let successfulCrawls = 0;
   let crawlCacheHits = 0;
   let countryRejected = 0;
+  let preAnalysisRejected = 0;
   let lastProgressAt = 0;
   const crawled = await mapWithConcurrency(
     newHits,
@@ -400,6 +429,36 @@ export async function executeDiscoveryRound({
           });
           return undefined;
         }
+        const preAnalysis = evaluatePreAnalysisGate(
+          candidate,
+          context,
+          preAnalysisConfig,
+        );
+        if (preAnalysis.skip) {
+          preAnalysisRejected += 1;
+          if (company) {
+            company.candidateId = candidate.id;
+            company.status = "pre_analysis_rejected";
+            company.crawlCompletedAt = new Date().toISOString();
+            company.error = preAnalysis.reason;
+          }
+          skipped.push({
+            url: hit.link,
+            reason: preAnalysis.reason ?? "抓取后预筛未通过",
+          });
+          logger.info(
+            "discovery.round.candidate.pre_analysis_rejected",
+            undefined,
+            {
+              roundIndex,
+              domain: hit.domain,
+              productHits: preAnalysis.productHits,
+              buyerHits: preAnalysis.buyerHits,
+              exclusionHits: preAnalysis.exclusionHits,
+            },
+          );
+          return undefined;
+        }
         candidate.contactValidations = await validateContactCandidates(
           candidate,
           context.country,
@@ -430,6 +489,7 @@ export async function executeDiscoveryRound({
         round.crawlSucceeded = successfulCrawls;
         round.crawlFailed = errors.length;
         round.countryRejected = countryRejected;
+        round.preAnalysisRejected = preAnalysisRejected;
         round.crawlCacheHits = crawlCacheHits;
         const nowMs = performance.now();
         if (nowMs - lastProgressAt >= 800) {
@@ -447,6 +507,7 @@ export async function executeDiscoveryRound({
   round.crawlSucceeded = successfulCrawls;
   round.crawlFailed = errors.length;
   round.countryRejected = countryRejected;
+  round.preAnalysisRejected = preAnalysisRejected;
   round.crawlCacheHits = crawlCacheHits;
   round.phase = "analyzing";
   await emitProgress();
@@ -461,6 +522,8 @@ export async function executeDiscoveryRound({
     crawlFailed: round.crawlFailed,
     countryRejected: round.countryRejected,
     crawlCacheHits: round.crawlCacheHits,
+    preAnalysisRejected: round.preAnalysisRejected,
+    snippetGateRejected: round.snippetGateRejected,
     durationMs: Math.round(performance.now() - started),
   });
   return {
@@ -539,10 +602,30 @@ export async function discoverCompanies(
   }
 
   const deduped = dedupeHits(allHits, options.excludedDomains);
+  const preAnalysisConfig = resolvePreAnalysisGateConfig(options.strategy);
+  const snippetFiltered = deduped.accepted.filter((hit) => {
+    const snippetGate = evaluateSearchSnippetGate(
+      hit,
+      planned.context,
+      preAnalysisConfig,
+    );
+    if (!snippetGate.skip) return true;
+    deduped.skipped.push({
+      url: hit.link,
+      reason: snippetGate.reason ?? "搜索摘要预筛未通过",
+    });
+    logger.info("discovery.candidate.snippet_gate_rejected", undefined, {
+      domain: hit.domain,
+      productHits: snippetGate.productHits,
+      buyerHits: snippetGate.buyerHits,
+      exclusionHits: snippetGate.exclusionHits,
+    });
+    return false;
+  });
   const crawl = options.crawl ?? crawlCandidate;
   const errors: DiscoveryRun["errors"] = [];
   const companies: NonNullable<DiscoveryRun["companies"]> =
-    deduped.accepted.map((hit) => ({
+    snippetFiltered.map((hit) => ({
       domain: hit.domain,
       url: hit.link,
       status: "pending",
@@ -553,7 +636,7 @@ export async function discoverCompanies(
   );
   let lastCrawlCompleted = 0;
   const crawled = await mapWithConcurrency(
-    deduped.accepted,
+    snippetFiltered,
     crawlConcurrency,
     async (hit): Promise<CompanyCandidate | undefined> => {
       const company = companyByDomain.get(hit.domain);
@@ -612,6 +695,30 @@ export async function discoverCompanies(
             domain: hit.domain,
             score: candidate.countryValidation.score,
             minimumCountryScore: options.minimumCountryScore,
+          });
+          return undefined;
+        }
+        const preAnalysis = evaluatePreAnalysisGate(
+          candidate,
+          planned.context,
+          preAnalysisConfig,
+        );
+        if (preAnalysis.skip) {
+          if (company) {
+            company.candidateId = candidate.id;
+            company.status = "pre_analysis_rejected";
+            company.crawlCompletedAt = new Date().toISOString();
+            company.error = preAnalysis.reason;
+          }
+          deduped.skipped.push({
+            url: hit.link,
+            reason: preAnalysis.reason ?? "抓取后预筛未通过",
+          });
+          logger.info("discovery.candidate.pre_analysis_rejected", undefined, {
+            domain: hit.domain,
+            productHits: preAnalysis.productHits,
+            buyerHits: preAnalysis.buyerHits,
+            exclusionHits: preAnalysis.exclusionHits,
           });
           return undefined;
         }

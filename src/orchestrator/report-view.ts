@@ -22,6 +22,7 @@ export function compactCampaignForMainAgent(campaign: CampaignResult): unknown {
       "crawling",
       "crawl_failed",
       "country_rejected",
+      "pre_analysis_rejected",
       "analyzing",
       "analyzed",
       "analysis_failed",
@@ -110,6 +111,9 @@ export function createDeterministicReport(
   const countryRejected = companyProgress.filter(
     (company) => company.status === "country_rejected",
   ).length;
+  const preAnalysisRejected = companyProgress.filter(
+    (company) => company.status === "pre_analysis_rejected",
+  ).length;
   const analysisErrors =
     campaign.analysisFailures?.length ??
     companyProgress.filter((company) => company.status === "analysis_failed")
@@ -123,6 +127,9 @@ export function createDeterministicReport(
       : []),
     ...(countryRejected
       ? [`${countryRejected} 个域名因缺少目标国家证据未进入模型分析`]
+      : []),
+    ...(preAnalysisRejected
+      ? [`${preAnalysisRejected} 个域名因策略/MarketPolicy 预分析过滤未进入模型分析`]
       : []),
     ...(needsReview.length
       ? [`${needsReview.length} 条线索需要人工复核`]
@@ -142,7 +149,7 @@ export function createDeterministicReport(
   return {
     sessionId: session.id,
     campaignId: campaign.id,
-    executiveSummary: `本次逐轮执行 ${executedQueries}/${session.strategy.budget.maxQueries} 条查询，累计处理 ${seenDomains} 个去重域名，成功分析 ${campaign.leads.length} 家，${countryRejected} 家因国家证据不足被过滤，${discovery?.errors.length ?? 0} 家抓取失败，${analysisErrors} 家分析失败；建议优先触达 ${qualified.length} 家，${needsReview.length} 家需要复核，${rejected.length} 家不建议触达。`,
+    executiveSummary: `本次逐轮执行 ${executedQueries}/${session.strategy.budget.maxQueries} 条查询，累计处理 ${seenDomains} 个去重域名，成功分析 ${campaign.leads.length} 家，${countryRejected} 家因国家证据不足被过滤，${preAnalysisRejected} 家因预分析过滤被跳过，${discovery?.errors.length ?? 0} 家抓取失败，${analysisErrors} 家分析失败；建议优先触达 ${qualified.length} 家，${needsReview.length} 家需要复核，${rejected.length} 家不建议触达。`,
     recommendedLeadIds,
     qualificationSummary: {
       qualified: qualified.length,
@@ -158,6 +165,7 @@ export function createDeterministicReport(
       deduplicatedCompanies: companyProgress.length,
       crawlSucceeded,
       countryRejected,
+      preAnalysisRejected,
       analyzed,
       analysisErrors,
       plannedQueries,

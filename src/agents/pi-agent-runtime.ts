@@ -36,7 +36,9 @@ import {
   searchPlanningSystemPrompt,
 } from "./production-prompts.js";
 import {
+  attemptDeterministicRepairV2,
   buildContactCatalog,
+  buildValidationHints,
   type CompanyAnalysisSubmissionV2,
   CompanyAnalysisValidationError,
   validateAndNormalizeCompanyAnalysisV2,
@@ -74,7 +76,8 @@ const analysisQualificationSchema = Type.Object({
   confidence: Type.Number({ minimum: 0, maximum: 1 }),
   reasons: Type.Array(Type.String()),
   evidenceRefs: Type.Array(Type.String(), {
-    description: "直接引用 research.facts 中选择的 evidenceRef",
+    description:
+      "必须引用 research.facts 中已声明的 evidenceRef；示例：facts 含 p1-s0 时此处可含 p1-s0",
   }),
   missingInformation: Type.Array(Type.String()),
   riskAssessment: Type.Array(Type.String()),
@@ -120,7 +123,10 @@ const analysisResearchSchema = Type.Object({
       "只列出官网证据明确出现的产品；不确定时返回空数组。",
   }),
   contacts: Type.Array(analysisContactSchema),
-  facts: Type.Array(analysisEvidenceSchema),
+  facts: Type.Array(analysisEvidenceSchema, {
+    description:
+      "先在此声明全部官网事实；qualification/outreach.evidenceRefs 只能引用此处出现的 evidenceRef",
+  }),
   missingInformation: Type.Array(Type.String()),
 });
 
@@ -139,7 +145,8 @@ const analysisOutreachSchema = Type.Object({
   emailBody: Type.String(),
   whatsappBody: Type.String(),
   evidenceRefs: Type.Array(Type.String(), {
-    description: "直接引用 research.facts 中选择的 evidenceRef",
+    description:
+      "必须引用 research.facts 中已声明的 evidenceRef；示例：facts 含 p1-s0 时此处可含 p1-s0",
   }),
 });
 
@@ -751,19 +758,34 @@ export class PiAgentRuntime implements AgentRuntime {
       name: "submit_company_analysis",
       label: "提交完整公司分析",
       description:
-        "提交研究、资格和人工审核用触达草稿。模型不提交 companyId/evidenceId/quote/URL；系统从已读取 evidenceRef 和 contactRef 确定性生成。",
+        "提交研究、资格和人工审核用触达草稿。先写 research.facts，再让 qualification/outreach.evidenceRefs 引用相同 evidenceRef。scaleScore>0 或 importCapability≠Unknown 时须有 kind=scale 且被 qualification 引用。最多 3 次修正提交。",
       parameters: companyAnalysisSchema,
       executionMode: "sequential",
       execute: async (_toolCallId, params) => {
         submissionAttempts += 1;
+        const submitted = params as CompanyAnalysisSubmissionV2;
         try {
           if (!manifestRead || !evidencePackRead) {
-            throw new CompanyAnalysisValidationError([
-              "提交前必须读取公司上下文清单和字段化证据包",
-            ]);
+            throw new CompanyAnalysisValidationError(
+              ["提交前必须读取公司上下文清单和字段化证据包"],
+              ["先调用 get_company_context_manifest 和 get_company_evidence_pack，再提交"],
+            );
+          }
+          const { repaired, applied } = attemptDeterministicRepairV2(
+            submitted,
+            readEvidenceRefs,
+            companyContext.catalog,
+          );
+          if (applied.length) {
+            logger.info(
+              "agent.company_analysis.repair_applied",
+              undefined,
+              { attempt: submissionAttempts, applied },
+              { agent: "CompanyAnalysisAgent" },
+            );
           }
           submission = validateAndNormalizeCompanyAnalysisV2(
-            params as CompanyAnalysisSubmissionV2,
+            repaired,
             candidate,
             readEvidenceRefs,
             companyContext.catalog,
@@ -771,21 +793,29 @@ export class PiAgentRuntime implements AgentRuntime {
           );
           lastSubmissionError = undefined;
         } catch (error) {
+          const issues =
+            error instanceof CompanyAnalysisValidationError
+              ? error.issues
+              : [error instanceof Error ? error.message : String(error)];
+          const hints =
+            error instanceof CompanyAnalysisValidationError && error.hints.length
+              ? error.hints
+              : buildValidationHints(issues, submitted);
           lastSubmissionError =
-            error instanceof Error ? error : new Error(String(error));
+            error instanceof CompanyAnalysisValidationError
+              ? error
+              : new CompanyAnalysisValidationError(issues, hints);
           logger.warn(
             "agent.company_analysis.validation_failed",
             lastSubmissionError.message,
             {
               attempt: submissionAttempts,
-              issues:
-                error instanceof CompanyAnalysisValidationError
-                  ? error.issues
-                  : [lastSubmissionError.message],
+              issues,
+              hints,
             },
             { agent: "CompanyAnalysisAgent" },
           );
-          throw error;
+          throw lastSubmissionError;
         }
         return {
           content: [{ type: "text", text: "完整公司分析已通过约束校验。" }],

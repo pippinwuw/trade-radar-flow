@@ -290,7 +290,6 @@ h1 {
 .orchestrator-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
-  min-height: 620px;
 }
 
 .agent-chat-panel {
@@ -301,7 +300,7 @@ h1 {
 }
 
 .agent-messages {
-  height: 520px;
+  height: 1040px;
   padding: 22px;
   overflow-y: auto;
 }
@@ -471,6 +470,7 @@ h1 {
 }
 
 .strategy-actions {
+  flex-wrap: wrap;
   justify-content: flex-end;
 }
 
@@ -1278,6 +1278,10 @@ textarea:focus {
   .agent-chat-panel {
     border-right: 0;
     border-bottom: 1px solid var(--stroke);
+  }
+
+  .agent-messages {
+    height: 520px;
   }
 
   .budget-grid,

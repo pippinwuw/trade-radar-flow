@@ -43,6 +43,7 @@ import { getDatabase } from "./storage/database.js";
 import { logger, runWithLogContext } from "./logging/logger.js";
 import { validateContactCandidates } from "./validation/contact-validator.js";
 import { validateCompanyCountry } from "./validation/country-validator.js";
+import { classifyCompanyAnalysisFailureKind } from "./validation/company-analysis-validator.js";
 
 export const DEFAULT_COMPANY_ANALYSIS_CONCURRENCY = 50;
 export const DEFAULT_COMPANY_ANALYSIS_ACTIVE_LIMIT = 12;
@@ -330,6 +331,7 @@ export async function runCampaign(
           stage: "analysis",
           message: error instanceof Error ? error.message : String(error),
           failedAt: new Date().toISOString(),
+          failureKind: classifyCompanyAnalysisFailureKind(error, failureTrace),
           trace: failureTrace,
         });
         if (failureTrace) {

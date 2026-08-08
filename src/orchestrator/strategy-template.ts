@@ -13,6 +13,7 @@ import {
   DEFAULT_SEARCH_QUERIES,
   MAX_RESULTS_PER_QUERY,
 } from "../lib/limits.js";
+import { DEFAULT_PRE_ANALYSIS_GATE } from "../validation/pre-analysis-gate.js";
 
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -85,6 +86,22 @@ export function clampStrategy(strategy: CampaignStrategy): CampaignStrategy {
         0,
         Math.min(strategy.validation.minimumCountryScore, 100),
       ),
+      preAnalysisGate: {
+        enabled:
+          strategy.validation.preAnalysisGate?.enabled ??
+          DEFAULT_PRE_ANALYSIS_GATE.enabled,
+        minPageTextChars: Math.max(
+          0,
+          strategy.validation.preAnalysisGate?.minPageTextChars ??
+            DEFAULT_PRE_ANALYSIS_GATE.minPageTextChars,
+        ),
+        requireStrongExclusion:
+          strategy.validation.preAnalysisGate?.requireStrongExclusion ??
+          DEFAULT_PRE_ANALYSIS_GATE.requireStrongExclusion,
+        useQueryTermsInSnippetGate:
+          strategy.validation.preAnalysisGate?.useQueryTermsInSnippetGate ??
+          DEFAULT_PRE_ANALYSIS_GATE.useQueryTermsInSnippetGate,
+      },
     },
     marketPolicyRef:
       strategy.marketPolicyRef?.marketId === country.id
@@ -160,13 +177,20 @@ export async function createDefaultStrategy(
     exclusions: {
       businessRoles: ["Retailer", "Service"],
       domains: [],
-      terms: ["retail only", "repair only", "consumer marketplace"],
+      terms: [
+        "retail only",
+        "repair only",
+        "consumer marketplace",
+        "classified ads",
+        "directory listing",
+      ],
     },
     validation: {
       minimumCountryScore: 35,
       requireCompanyDomainEmail: false,
       requireMx: true,
       requireLocalPhone: false,
+      preAnalysisGate: { ...DEFAULT_PRE_ANALYSIS_GATE },
     },
     budget: {
       maxQueries: DEFAULT_SEARCH_QUERIES,
@@ -192,7 +216,7 @@ export async function createDefaultStrategy(
         id: randomUUID(),
         title: "人工确认重点",
         content:
-          "执行前确认产品/应用、目标客户画像、排除条件、查询覆盖、验证门槛与预算。",
+          "执行前确认产品/应用、目标客户画像、排除条件、查询覆盖、验证门槛、预分析过滤与预算。",
         source: "template",
       },
       {

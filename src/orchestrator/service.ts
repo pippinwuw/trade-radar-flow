@@ -722,6 +722,38 @@ export class OrchestratorService {
     return updated;
   }
 
+  revokeStrategyApproval(sessionId: string): OrchestratorSession {
+    const current = this.getSession(sessionId);
+    if (current.status !== "approved") {
+      throw new Error("只有已确认且尚未执行的策略可以撤回");
+    }
+    const updatedAt = now();
+    const updated = this.save({
+      ...current,
+      status: "awaiting_approval",
+      approvedStrategyHash: undefined,
+      approvalId: undefined,
+      approvedAt: undefined,
+      updatedAt,
+    });
+    this.addMessage(
+      sessionId,
+      "assistant",
+      "策略确认已撤回，你可以继续修改策略或与主 Agent 讨论。确认无误后请再次点击“确认策略”。",
+      "review_and_approve_strategy",
+    );
+    logger.info(
+      "orchestrator.strategy.approval_revoked",
+      undefined,
+      {
+        strategyVersion: updated.strategyVersion,
+        strategyHash: updated.strategyHash,
+      },
+      { sessionId },
+    );
+    return updated;
+  }
+
   startExecution(sessionId: string): OrchestratorSession {
     const current = this.getSession(sessionId);
     if (current.status !== "approved") throw new Error("策略尚未确认");

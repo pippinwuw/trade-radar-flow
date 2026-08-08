@@ -8,7 +8,11 @@
       "importer",
       "wholesaler",
       "supplier",
-      "fabricator"
+      "fabricator",
+      "موزع",
+      "مستورد",
+      "جملة",
+      "مورد"
     ],
     "queryPatterns": [
       "{product} distributor {city}",
@@ -40,7 +44,9 @@
     ],
     "exclusions": [
       "pure retail shops",
-      "consumer marketplaces",
+      "walk-in retail",
+      "consumer marketplace",
+      "online marketplace",
       "repair-only services",
       "directories without an official company website"
     ]

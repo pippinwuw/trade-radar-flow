@@ -205,6 +205,15 @@ app.post("/api/orchestrator/sessions/:id/approve", (request, response) => {
   );
 });
 
+app.post(
+  "/api/orchestrator/sessions/:id/approve/revoke",
+  (request, response) => {
+    response.json(
+      getOrchestratorService().revokeStrategyApproval(request.params.id),
+    );
+  },
+);
+
 app.post("/api/orchestrator/sessions/:id/execute", (request, response) => {
   response
     .status(202)

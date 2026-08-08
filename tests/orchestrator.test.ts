@@ -81,6 +81,16 @@ test("主 Agent 生成查询预览后才允许用户确认策略", async () => {
   assert.equal(approved.status, "approved");
   assert.equal(approved.approvedStrategyHash, approved.strategyHash);
   assert.ok(approved.approvalId);
+
+  const revoked = active.revokeStrategyApproval(created.session.id);
+  assert.equal(revoked.status, "awaiting_approval");
+  assert.equal(revoked.approvedStrategyHash, undefined);
+  assert.equal(revoked.approvalId, undefined);
+
+  assert.throws(
+    () => active.revokeStrategyApproval(created.session.id),
+    /尚未执行/,
+  );
 });
 
 test("修改策略会增加版本并使原审批流程失效", async () => {

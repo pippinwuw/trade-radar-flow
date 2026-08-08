@@ -41,6 +41,9 @@ test("公司分析提示词强制证据分层、策略驱动资格和联系人�
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /contactRef 与 evidenceRef/);
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /最多进行 30 次证据探索/);
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /达到上限后.*必须立即/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /最多 3 次修正机会/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /双层引用协议/);
+  assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /kind=scale/);
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /canonicalName 留空/);
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /经营角色和进口能力使用 Unknown/);
   assert.match(COMPANY_ANALYSIS_SYSTEM_PROMPT, /不得猜测/);

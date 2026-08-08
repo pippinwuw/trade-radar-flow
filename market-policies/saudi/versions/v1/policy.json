@@ -46,7 +46,10 @@
     ],
     "exclusions": [
       "walk-in retail",
+      "retail shop",
       "ready-made consumer cover shops",
+      "consumer marketplace",
+      "online marketplace",
       "repair-only services",
       "social-only profiles",
       "directories without an official company website"

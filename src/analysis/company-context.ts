@@ -12,17 +12,16 @@ import {
   type ContactReference,
   type EvidenceSnippet,
 } from "../validation/company-analysis-validator.js";
+import {
+  normalizedTokens,
+  termsForEvidenceSlot,
+  type EvidenceSlot,
+} from "./evidence-terms.js";
 
 export const COMPANY_ANALYSIS_CONTRACT_VERSION = "company-analysis-v3";
 export const COMPANY_EVIDENCE_INDEX_VERSION = "company-evidence-v2-large-chunks";
 
-export type EvidenceSlot =
-  | "identity"
-  | "productFit"
-  | "businessRole"
-  | "scaleAndImport"
-  | "countrySignals"
-  | "exclusionsAndRisks";
+export type { EvidenceSlot };
 
 const SLOT_QUOTAS: Record<EvidenceSlot, number> = {
   identity: 10,
@@ -89,15 +88,6 @@ function stableValue(value: unknown): unknown {
   return value;
 }
 
-function normalizedTokens(values: readonly string[]): Set<string> {
-  return new Set(
-    values
-      .flatMap((value) => value.toLowerCase().split(/[^\p{L}\p{N}]+/u))
-      .map((value) => value.trim())
-      .filter((value) => value.length >= 2),
-  );
-}
-
 function pageTypeBoost(url: string, title: string, slot: EvidenceSlot): number {
   let path = "";
   try {
@@ -117,70 +107,6 @@ function pageTypeBoost(url: string, title: string, slot: EvidenceSlot): number {
     return slot === "identity" || slot === "countrySignals" ? 3 : 0;
   }
   return 0;
-}
-
-function termsForSlot(
-  slot: EvidenceSlot,
-  context: CampaignAgentContext,
-): string[] {
-  const strategy = context.strategy;
-  const marketPolicy = context.marketPolicy;
-  switch (slot) {
-    case "identity":
-      return [
-        "about",
-        "company",
-        "founded",
-        "established",
-        "profile",
-        ...marketPolicy.companyAnalysis.identitySignals,
-        ...marketPolicy.companyAnalysis.legalSuffixSemantics,
-      ];
-    case "productFit":
-      return [
-        context.input.product,
-        ...(strategy?.search.requiredKeywords ?? []),
-        ...(strategy?.search.alternativeKeywords ?? []),
-        ...(strategy?.search.localLanguageKeywords ?? []),
-        "product",
-        "application",
-        "solution",
-      ];
-    case "businessRole":
-      return [
-        ...(strategy?.targetCustomer.businessRoles ?? []),
-        ...marketPolicy.searchLocalization.buyerRoleTerms,
-        ...marketPolicy.companyAnalysis.buyerSignals,
-      ];
-    case "scaleAndImport":
-      return [
-        "import",
-        "warehouse",
-        "branch",
-        "global",
-        "sourcing",
-        "oem",
-        "distribution network",
-        ...marketPolicy.companyAnalysis.importAndScaleSignals,
-      ];
-    case "countrySignals":
-      return [
-        context.country.displayName,
-        context.country.shortName,
-        ...context.country.cities,
-        context.country.callingCode,
-        context.country.domainSuffix,
-        ...context.country.businessSuffixes,
-        ...marketPolicy.companyAnalysis.identitySignals,
-      ];
-    case "exclusionsAndRisks":
-      return [
-        ...(strategy?.exclusions.terms ?? []),
-        ...(strategy?.exclusions.businessRoles ?? []),
-        ...marketPolicy.companyAnalysis.falsePositivePatterns,
-        ...marketPolicy.companyAnalysis.exclusions,
-      ];
-  }
 }
 
 function validationForContact(
@@ -327,7 +253,7 @@ export function buildCompanyContext(
 
   const rankedEvidence = Object.fromEntries(
     (Object.keys(SLOT_QUOTAS) as EvidenceSlot[]).map((slot) => {
-      const terms = normalizedTokens(termsForSlot(slot, context));
+      const terms = normalizedTokens(termsForEvidenceSlot(slot, context));
       const ranked = catalog
         .map((snippet) => {
           const page = candidate.pages[snippet.pageIndex];

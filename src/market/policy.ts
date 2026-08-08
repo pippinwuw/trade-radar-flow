@@ -478,6 +478,7 @@ export function createGeneratedMarketPolicy(
       queryPatterns: input.queryPatterns,
       translationRestrictions: [
         "Use only user-approved or verified local-language product terms.",
+        "Add local-language buyerRoleTerms that can match Serper snippets and page text for pre-analysis filtering.",
       ],
     },
     companyAnalysis: {
@@ -516,6 +517,7 @@ export function createGeneratedMarketPolicy(
     metadata: {
       reviewNotes: [
         "Agent-generated draft; review and user approval are required.",
+        "Ensure exclusions and buyerRoleTerms include matchable local phrases for conservative pre-analysis filtering.",
       ],
     },
   }, "generated");

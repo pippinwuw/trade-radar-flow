@@ -53,6 +53,7 @@ export type CompanyProcessingStatus =
   | "crawling"
   | "crawl_failed"
   | "country_rejected"
+  | "pre_analysis_rejected"
   | "analyzing"
   | "analyzed"
   | "analysis_failed";
@@ -129,6 +130,8 @@ export interface DiscoveryRound {
   crawlSucceeded: number;
   crawlFailed: number;
   countryRejected?: number;
+  preAnalysisRejected?: number;
+  snippetGateRejected?: number;
   crawlCacheHits: number;
   analysisSucceeded: number;
   analysisFailed: number;
@@ -388,12 +391,21 @@ export interface LeadRecord {
   createdAt: string;
 }
 
+export type CompanyAnalysisFailureKind =
+  | "validation"
+  | "timeout"
+  | "terminated"
+  | "transient"
+  | "budget_exhausted"
+  | "unknown";
+
 export interface CompanyAnalysisFailure {
   candidateId: string;
   domain: string;
   stage: "analysis";
   message: string;
   failedAt: string;
+  failureKind?: CompanyAnalysisFailureKind;
   trace?: AgentTrace;
 }
 
@@ -534,6 +546,12 @@ export interface CampaignStrategy {
     requireCompanyDomainEmail: boolean;
     requireMx: boolean;
     requireLocalPhone: boolean;
+    preAnalysisGate?: {
+      enabled: boolean;
+      minPageTextChars: number;
+      requireStrongExclusion: boolean;
+      useQueryTermsInSnippetGate: boolean;
+    };
   };
   budget: {
     maxQueries: number;
@@ -581,6 +599,7 @@ export interface OrchestratorReport {
     deduplicatedCompanies: number;
     crawlSucceeded: number;
     countryRejected?: number;
+    preAnalysisRejected?: number;
     analyzed: number;
     analysisErrors: number;
     plannedQueries: number;

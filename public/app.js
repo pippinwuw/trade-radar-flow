@@ -69,6 +69,9 @@ const elements = {
   strategyBudget: document.querySelector("#strategyBudget"),
   saveStrategyButton: document.querySelector("#saveStrategyButton"),
   approveStrategyButton: document.querySelector("#approveStrategyButton"),
+  revokeStrategyApprovalButton: document.querySelector(
+    "#revokeStrategyApprovalButton",
+  ),
   executeStrategyButton: document.querySelector("#executeStrategyButton"),
   strategyPanel: document.querySelector("#strategyPanel"),
   marketPolicyPanel: document.querySelector("#marketPolicyPanel"),
@@ -1278,6 +1281,10 @@ function renderStrategy() {
     "hidden",
     session.status !== "awaiting_approval",
   );
+  elements.revokeStrategyApprovalButton.classList.toggle(
+    "hidden",
+    session.status !== "approved",
+  );
   elements.executeStrategyButton.classList.toggle(
     "hidden",
     session.status !== "approved",
@@ -1351,6 +1358,7 @@ function companyStatusCounts(currentCampaign) {
   const analyzed = count("analyzed");
   const crawlFailed = count("crawl_failed");
   const countryRejected = count("country_rejected");
+  const preAnalysisRejected = count("pre_analysis_rejected");
   const analysisFailed = count("analysis_failed");
   const pending = count("pending");
   return {
@@ -1360,16 +1368,22 @@ function companyStatusCounts(currentCampaign) {
     analyzed,
     crawlFailed,
     countryRejected,
+    preAnalysisRejected,
     analysisFailed,
     pending,
-    completed: analyzed + crawlFailed + countryRejected + analysisFailed,
+    completed:
+      analyzed +
+      crawlFailed +
+      countryRejected +
+      preAnalysisRejected +
+      analysisFailed,
   };
 }
 
 function companyProgressText(currentCampaign) {
   const counts = companyStatusCounts(currentCampaign);
   if (!counts.total) return "";
-  return `已处理 ${counts.completed}/${counts.total} 家；抓取中 ${counts.crawling}，分析中 ${counts.analyzing}，分析成功 ${counts.analyzed}，国家不符 ${counts.countryRejected}，抓取失败 ${counts.crawlFailed}，分析失败 ${counts.analysisFailed}`;
+  return `已处理 ${counts.completed}/${counts.total} 家；抓取中 ${counts.crawling}，分析中 ${counts.analyzing}，分析成功 ${counts.analyzed}，国家不符 ${counts.countryRejected}，预筛跳过 ${counts.preAnalysisRejected}，抓取失败 ${counts.crawlFailed}，分析失败 ${counts.analysisFailed}`;
 }
 
 function currentDiscoveryRound(currentCampaign) {
@@ -1844,6 +1858,25 @@ async function approveOrchestratorStrategy() {
   }
 }
 
+async function revokeOrchestratorStrategyApproval() {
+  if (
+    !window.confirm(
+      "撤回后将回到“等待确认”状态，可继续修改策略并重新确认。尚未开始执行，确定撤回吗？",
+    )
+  ) {
+    return;
+  }
+  try {
+    orchestratorSession = await request(
+      `/api/orchestrator/sessions/${orchestratorSession.id}/approve/revoke`,
+      { method: "POST", body: "{}" },
+    );
+    await loadOrchestratorSession(orchestratorSession.id);
+  } catch (error) {
+    window.alert(error.message);
+  }
+}
+
 async function executeOrchestratorStrategy() {
   try {
     orchestratorSession = await request(
@@ -2082,6 +2115,10 @@ elements.saveStrategyButton.addEventListener(
 elements.approveStrategyButton.addEventListener(
   "click",
   approveOrchestratorStrategy,
+);
+elements.revokeStrategyApprovalButton.addEventListener(
+  "click",
+  revokeOrchestratorStrategyApproval,
 );
 elements.executeStrategyButton.addEventListener(
   "click",

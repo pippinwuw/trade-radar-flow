@@ -1,4 +1,6 @@
 import type {
+  AgentTrace,
+  CompanyAnalysisFailureKind,
   CompanyAnalysisResult,
   CompanyCandidate,
   CompanyResearchPacket,
@@ -8,11 +10,21 @@ import type {
   QualificationDecision,
   ResolvedContact,
 } from "../domain.js";
+import {
+  OperationTimeoutError,
+  isTransientError,
+} from "../lib/concurrency.js";
 
 export class CompanyAnalysisValidationError extends Error {
-  constructor(readonly issues: string[]) {
-    super(`公司分析提交未通过校验：\n- ${issues.join("\n- ")}`);
+  readonly hints: string[];
+
+  constructor(readonly issues: string[], hints: string[] = []) {
+    const hintBlock = hints.length
+      ? `\n修正提示：\n- ${hints.join("\n- ")}`
+      : "";
+    super(`公司分析提交未通过校验：\n- ${issues.join("\n- ")}${hintBlock}`);
     this.name = "CompanyAnalysisValidationError";
+    this.hints = hints;
   }
 }
 
@@ -213,6 +225,238 @@ export function buildContactCatalog(
   }));
 }
 
+type SubmissionFactKind =
+  CompanyAnalysisSubmissionV2["research"]["facts"][number]["kind"];
+
+const REPAIRABLE_FACT_KINDS = new Set<SubmissionFactKind>([
+  "product",
+  "business_role",
+  "scale",
+]);
+
+function inferRepairKindForRef(
+  ref: string,
+  submitted: CompanyAnalysisSubmissionV2,
+): SubmissionFactKind | undefined {
+  const inQualification = submitted.qualification.evidenceRefs.includes(ref);
+  const inOutreach = submitted.outreach.evidenceRefs.includes(ref);
+  const existingKinds = new Set(
+    submitted.research.facts
+      .filter((fact) => fact.evidenceRef === ref)
+      .map((fact) => fact.kind),
+  );
+  const candidates: SubmissionFactKind[] = [];
+  if (
+    inQualification &&
+    (submitted.qualification.scaleScore > 0 ||
+      submitted.qualification.importCapability !== "Unknown") &&
+    !existingKinds.has("scale")
+  ) {
+    candidates.push("scale");
+  }
+  if (
+    inQualification &&
+    submitted.qualification.productFitScore > 0 &&
+    !existingKinds.has("product")
+  ) {
+    candidates.push("product");
+  }
+  if (
+    inQualification &&
+    submitted.qualification.businessRole !== "Unknown" &&
+    !existingKinds.has("business_role")
+  ) {
+    candidates.push("business_role");
+  }
+  if (inOutreach && !existingKinds.has("product")) {
+    candidates.push("product");
+  }
+  return candidates[0];
+}
+
+export interface CompanyAnalysisRepairResult {
+  repaired: CompanyAnalysisSubmissionV2;
+  applied: string[];
+}
+
+export function attemptDeterministicRepairV2(
+  submitted: CompanyAnalysisSubmissionV2,
+  readEvidenceRefs: ReadonlySet<string>,
+  catalog: readonly EvidenceSnippet[],
+): CompanyAnalysisRepairResult {
+  const repaired = structuredClone(submitted);
+  const applied: string[] = [];
+  const snippetByRef = new Map(catalog.map((snippet) => [snippet.ref, snippet]));
+  const qualificationRefs = new Set(repaired.qualification.evidenceRefs);
+
+  for (const ref of [
+    ...new Set([
+      ...repaired.qualification.evidenceRefs,
+      ...repaired.outreach.evidenceRefs,
+    ]),
+  ]) {
+    if (
+      repaired.research.facts.some((fact) => fact.evidenceRef === ref) ||
+      !readEvidenceRefs.has(ref)
+    ) {
+      continue;
+    }
+    const snippet = snippetByRef.get(ref);
+    const kind = inferRepairKindForRef(ref, repaired);
+    if (!snippet || !kind || !REPAIRABLE_FACT_KINDS.has(kind)) continue;
+    repaired.research.facts.push({
+      kind,
+      label: kind,
+      value: snippet.text.slice(0, 200).trim(),
+      evidenceRef: ref,
+      confidence: 0.75,
+    });
+    applied.push(`backfill_fact:${ref}:${kind}`);
+  }
+
+  for (const fact of repaired.research.facts) {
+    if (!readEvidenceRefs.has(fact.evidenceRef)) continue;
+    if (
+      (repaired.qualification.scaleScore > 0 ||
+        repaired.qualification.importCapability !== "Unknown") &&
+      fact.kind === "scale" &&
+      !qualificationRefs.has(fact.evidenceRef)
+    ) {
+      repaired.qualification.evidenceRefs.push(fact.evidenceRef);
+      qualificationRefs.add(fact.evidenceRef);
+      applied.push(`sync_qualification_ref:${fact.evidenceRef}:scale`);
+    }
+    if (
+      repaired.qualification.productFitScore > 0 &&
+      fact.kind === "product" &&
+      !qualificationRefs.has(fact.evidenceRef)
+    ) {
+      repaired.qualification.evidenceRefs.push(fact.evidenceRef);
+      qualificationRefs.add(fact.evidenceRef);
+      applied.push(`sync_qualification_ref:${fact.evidenceRef}:product`);
+    }
+    if (
+      repaired.qualification.businessRole !== "Unknown" &&
+      fact.kind === "business_role" &&
+      !qualificationRefs.has(fact.evidenceRef)
+    ) {
+      repaired.qualification.evidenceRefs.push(fact.evidenceRef);
+      qualificationRefs.add(fact.evidenceRef);
+      applied.push(`sync_qualification_ref:${fact.evidenceRef}:business_role`);
+    }
+  }
+
+  if (
+    (repaired.qualification.confidence < 0.8 ||
+      !repaired.qualification.isQualified) &&
+    repaired.qualification.riskAssessment.length === 0
+  ) {
+    repaired.qualification.riskAssessment = [
+      "证据不足或结论存疑，需人工复核",
+    ];
+    applied.push("backfill:riskAssessment");
+  }
+
+  return { repaired, applied };
+}
+
+export function buildValidationHints(
+  issues: readonly string[],
+  submitted: CompanyAnalysisSubmissionV2,
+): string[] {
+  const hints: string[] = [];
+  const factRefs = new Set(
+    submitted.research.facts.map((fact) => fact.evidenceRef),
+  );
+  const qualificationRefs = new Set(submitted.qualification.evidenceRefs);
+
+  for (const issue of issues) {
+    const unselectedQualification = issue.match(
+      /^qualification 引用了未写入 research\.facts 的事实：(.+)$/,
+    );
+    if (unselectedQualification?.[1]) {
+      hints.push(
+        `先将 ${unselectedQualification[1]} 加入 research.facts（含 kind/label/value），再在 qualification.evidenceRefs 中引用`,
+      );
+      continue;
+    }
+    const unselectedOutreach = issue.match(
+      /^outreach 引用了未写入 research\.facts 的事实：(.+)$/,
+    );
+    if (unselectedOutreach?.[1]) {
+      hints.push(
+        `先将 ${unselectedOutreach[1]} 加入 research.facts，再在 outreach.evidenceRefs 中引用`,
+      );
+      continue;
+    }
+    if (issue.includes("scaleScore 大于 0")) {
+      hints.push(
+        "添加 kind=scale 的 fact，并将其 evidenceRef 放入 qualification.evidenceRefs；或改 scaleScore=0",
+      );
+    } else if (issue.includes("importCapability 缺少")) {
+      hints.push(
+        "importCapability 非 Unknown 时必须有一条 kind=scale 的事实，且其 evidenceRef 在 qualification.evidenceRefs 中；否则改为 Unknown",
+      );
+    } else if (issue.includes("productFitScore 大于 0")) {
+      hints.push(
+        "添加 kind=product 的 fact，并将其 evidenceRef 放入 qualification.evidenceRefs；或改 productFitScore=0",
+      );
+    } else if (issue.includes("products 缺少 product")) {
+      hints.push("products 非空时必须有一条 kind=product 的 fact；否则返回空数组");
+    } else if (issue.includes("businessRole 缺少")) {
+      hints.push(
+        "添加 kind=business_role 的 fact 并放入 qualification.evidenceRefs；或改 businessRole=Unknown",
+      );
+    } else if (issue.includes("canonicalName 缺少 identity")) {
+      hints.push("canonicalName 非空时必须有一条 kind=identity 的 fact；否则留空 canonicalName");
+    } else if (issue.includes("riskAssessment")) {
+      hints.push("低置信或淘汰结论必须在 qualification.riskAssessment 中说明缺口与误判风险");
+    } else if (issue.startsWith("事实引用未读取或不存在：")) {
+      const ref = issue.slice("事实引用未读取或不存在：".length);
+      hints.push(
+        `evidenceRef ${ref} 未通过证据工具读取；改用已返回的 ref，或先调用 search/read/pack 读取后再写入 facts`,
+      );
+    } else if (issue.includes("推荐联系人必须来自 research.contacts")) {
+      hints.push("recommendedContactRef 必须是 research.contacts 中已选择的 contactRef，或填 none");
+    }
+  }
+
+  if (
+    submitted.qualification.scaleScore > 0 &&
+    !submitted.research.facts.some(
+      (fact) => fact.kind === "scale" && qualificationRefs.has(fact.evidenceRef),
+    ) &&
+    !hints.some((hint) => hint.includes("kind=scale"))
+  ) {
+    hints.push(
+      "scaleScore>0 时 qualification.evidenceRefs 须包含一条 kind=scale 的 fact 引用",
+    );
+  }
+
+  for (const ref of submitted.qualification.evidenceRefs) {
+    if (!factRefs.has(ref)) {
+      hints.push(
+        `qualification.evidenceRefs 中的 ${ref} 尚未写入 research.facts`,
+      );
+    }
+  }
+
+  return [...new Set(hints)];
+}
+
+export function classifyCompanyAnalysisFailureKind(
+  error: unknown,
+  trace?: AgentTrace,
+): CompanyAnalysisFailureKind {
+  if (error instanceof CompanyAnalysisValidationError) return "validation";
+  if (error instanceof OperationTimeoutError) return "timeout";
+  if (trace?.status === "budget_exhausted") return "budget_exhausted";
+  const message = error instanceof Error ? error.message : String(error);
+  if (/terminated/i.test(message)) return "terminated";
+  if (isTransientError(error)) return "transient";
+  return "unknown";
+}
+
 export function validateAndNormalizeCompanyAnalysisV2(
   submitted: CompanyAnalysisSubmissionV2,
   candidate: CompanyCandidate,
@@ -250,7 +494,7 @@ export function validateAndNormalizeCompanyAnalysisV2(
     [...new Set(refs)].flatMap((ref) => {
       const id = evidenceIdByRef.get(ref);
       if (!id) {
-        issues.push(`${field} 引用了未选择的事实：${ref}`);
+        issues.push(`${field} 引用了未写入 research.facts 的事实：${ref}`);
         return [];
       }
       return [id];
@@ -352,7 +596,12 @@ export function validateAndNormalizeCompanyAnalysisV2(
   ) {
     issues.push("推荐联系人必须来自 research.contacts");
   }
-  if (issues.length) throw new CompanyAnalysisValidationError(issues);
+  if (issues.length) {
+    throw new CompanyAnalysisValidationError(
+      issues,
+      buildValidationHints(issues, submitted),
+    );
+  }
 
   return {
     research: {

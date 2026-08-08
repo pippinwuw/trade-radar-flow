@@ -35,8 +35,9 @@ export function searchPlanningSystemPrompt(requestedQueries: number): string {
       "4. 只使用有依据的当地语言产品词。技术等级、标准、材料名称和品牌不可自行翻译。",
       "5. groupId 必须稳定地表示“产品词 + 买家角色/应用场景 + 查询语言”；城市、国家级范围和同义词属于组内变体。",
       "6. 基础查询不要加入已读公司排除词；运行时会依据当前 Campaign 的 seenDomains 和官网身份类证据追加精确 -site:domain / 品牌过滤。",
-      "7. 只规划合法公开企业信息检索，不得建议绕过验证码、访问控制、robots、网站条款或搜索服务政策。",
-      "8. countryId、marketPolicyVersion、marketPolicyHash 必须与输入完全一致。你只规划，不得执行搜索。",
+      "7. 策略 exclusions 与 MarketPolicy companyAnalysis.exclusions / buyerRoleTerms 会驱动保守的搜索摘要预筛与抓取后预分析过滤（无产品词 + 无买家角色 + 命中排除时才跳过 LLM）；请写入可匹配的本地化排除短语和买家角色词，不要把 falsePositivePatterns 写成不可匹配的抽象规则。",
+      "8. 只规划合法公开企业信息检索，不得建议绕过验证码、访问控制、robots、网站条款或搜索服务政策。",
+      "9. countryId、marketPolicyVersion、marketPolicyHash 必须与输入完全一致。你只规划，不得执行搜索。",
     ].join("\n"),
     "完成检查后只调用一次 submit_search_plan，不输出额外自然语言。",
   );
@@ -56,10 +57,10 @@ export const COMPANY_ANALYSIS_SYSTEM_PROMPT = sections(
     "7. importCapability=High 需要明确进口、全球采购或等价强证据；只有一般分销/贸易描述时最多 Medium；证据不足必须为 Unknown。",
     "8. 低于 0.8 置信度、证据冲突或不合格结论必须重新核对，并在 riskAssessment 说明缺口与误判风险；reviewPerformed 由系统生成。",
     "9. 触达草稿只用于销售审核。个性化必须来自该公司证据；不得捏造客户痛点、采购计划、现有供应商、规模或用户未提供的卖方优势。",
-    "10. 每条 fact 直接引用已读取的 evidenceRef；qualification/outreach 也直接引用这些 evidenceRef。系统生成 companyId、evidence ID、quote、sourceUrl、keyEvidence 和 reviewPerformed。recommendedContactRef 必须引用 research.contacts 中已选择的 contactRef；无联系人时填 none。",
-    "11. 不确定信息不得为了满足 schema 而补全：公司名无法由官网确认时 canonicalName 留空；产品未知时 products 返回空数组；经营角色和进口能力使用 Unknown；联系人不存在时使用 none；所有缺口写入 missingInformation 和 riskAssessment。搜索摘要、域名词义、常识推断和页面未提及均不能填充字段。",
+    "10. 双层引用协议：先在 research.facts 声明每条事实 { kind, label, value, evidenceRef }，再在 qualification.evidenceRefs / outreach.evidenceRefs 中引用同一 evidenceRef。示例：facts 含 { kind:scale, evidenceRef:p1-s0 } 且 qualification.evidenceRefs 含 p1-s0；facts 含 { kind:product, evidenceRef:p0-s2 } 且 qualification.evidenceRefs 含 p0-s2。禁止只把 ref 放进 qualification/outreach 而不写入 facts。importCapability 非 Unknown 时，必须有一条 kind=scale 的事实，且其 evidenceRef 也在 qualification.evidenceRefs 中。系统生成 companyId、evidence ID、quote、sourceUrl、keyEvidence 和 reviewPerformed。recommendedContactRef 必须引用 research.contacts 中已选择的 contactRef；无联系人时填 none。",
+    "11. 不确定信息不得为了满足 schema 而补全：公司名无法由官网确认时 canonicalName 留空；产品未知时 products 返回空数组；经营角色和进口能力使用 Unknown；scaleScore=0 且 importCapability=Unknown 若缺规模证据；联系人不存在时使用 none；所有缺口写入 missingInformation 和 riskAssessment。搜索摘要、域名词义、常识推断和页面未提及均不能填充字段。",
   ].join("\n"),
-  "最多进行 30 次证据探索；达到上限后不得继续读取或检索，必须立即使用当前已确认信息调用 submit_company_analysis。最终提交有独立修正预算；若校验返回字段化错误，只修正错误引用后再次提交。证据不足也必须如实提交空值、Unknown 和 missingInformation，不得猜测，不要输出 Markdown 或额外说明。",
+  "最多进行 30 次证据探索；达到上限后不得继续读取或检索，必须立即使用当前已确认信息调用 submit_company_analysis。最终提交另有最多 3 次修正机会：若校验返回 issues 与修正提示，只修正错误引用或分数后再次调用 submit_company_analysis，不要输出 Markdown 或额外说明。证据不足也必须如实提交空值、Unknown 和 missingInformation，不得猜测。",
 );
 
 
@@ -79,7 +80,8 @@ export const ORCHESTRATOR_SYSTEM_PROMPT = sections(
     "4. maxQueries 是用户批准的安全上限，不是固定系统上限。Serper 每条最多 100 条；全面模式通过有信息增益的产品词、角色/场景、城市和语言矩阵扩大覆盖，不得用重复查询凑预算。",
     "5. 执行是逐轮闭环：一条查询完成去重、抓取、独立公司分析和 checkpoint 后才进入下一条；当前 Campaign 本地 seenDomains 最终防重，历史 Campaign 只复用缓存。",
     "6. 搜索端排除只允许系统生成精确 -site:domain 和官网身份类证据确认的唯一品牌短语；产品词、城市、角色、通用词和企业后缀不得作为品牌排除。",
-    "7. 使用当前策略中的低新增阈值和连续轮数判断分组饱和；不得承诺一定跑满 maxQueries，也不得把 100 条结果说成公司总上限。",
+    "7. 策略 exclusions 与 MarketPolicy 的 buyerRoleTerms / companyAnalysis.exclusions 会驱动保守预分析过滤（Serper 摘要 + 抓取后正文，三条件同时满足才跳过 LLM）；制定或修改排除项、买家角色和本地化关键词时，应写入可在网页/SERP 摘要中直接匹配的短语，而非仅面向人工阅读的抽象描述。",
+    "8. 使用当前策略中的低新增阈值和连续轮数判断分组饱和；不得承诺一定跑满 maxQueries，也不得把 100 条结果说成公司总上限。",
   ].join("\n"),
   [
     "权限与沟通规则：",
