@@ -348,6 +348,73 @@ h1 {
   font-size: 13px;
 }
 
+.agent-activity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 16px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--stroke);
+  border-bottom: none;
+  background: var(--surface-alt);
+}
+
+.agent-activity.hidden {
+  display: none;
+}
+
+.agent-activity-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.agent-activity-indicator[data-phase="thinking"],
+.agent-activity-indicator[data-phase="responding"] {
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: agent-activity-pulse 1.4s ease-out infinite;
+}
+
+.agent-activity-indicator[data-phase="tool"] {
+  background: var(--warning);
+  animation: agent-activity-pulse 1.1s ease-out infinite;
+}
+
+.agent-activity-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-activity-copy strong {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.agent-activity-copy span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes agent-activity-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
 .agent-composer {
   margin-top: auto;
   padding: 16px;
@@ -406,7 +473,8 @@ h1 {
 
 .market-policy-meta,
 .market-policy-hint,
-.market-policy-message {
+.market-policy-message,
+.strategy-field-hint {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
@@ -996,6 +1064,17 @@ textarea:focus {
 .detail-header p {
   margin: 0;
   color: var(--muted);
+}
+
+.language-contract-meta {
+  margin-top: 8px !important;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.language-contract-meta strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .review-actions {

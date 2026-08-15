@@ -89,6 +89,18 @@
                 新建会话后，主 Agent 会加载基础策略模板，并引导你确认下一步。
               </div>
             </div>
+            <div
+              class="agent-activity hidden"
+              id="agentActivity"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <span class="agent-activity-indicator" data-phase="idle"></span>
+              <div class="agent-activity-copy">
+                <strong id="agentActivityPhase">空闲</strong>
+                <span id="agentActivityText">主 Agent 空闲</span>
+              </div>
+            </div>
             <form class="agent-composer" id="agentComposer">
               <textarea
                 id="agentMessageInput"
@@ -143,6 +155,19 @@
                 <label>同义词 / 补充词<input id="strategyAlternatives" /></label>
                 <label>当地语言关键词<input id="strategyLocalKeywords" /></label>
                 <label>重点城市<input id="strategyCities" /></label>
+                <label>
+                  审查报告语言
+                  <select id="strategyReportLanguage">
+                    <option value="Chinese">Chinese（中文）</option>
+                    <option value="English">English</option>
+                    <option value="Arabic">Arabic</option>
+                    <option value="Spanish">Spanish</option>
+                    <option value="German">German</option>
+                  </select>
+                </label>
+                <p class="strategy-field-hint">
+                  控制公司分析简报与资格理由的人工审查用语；市场搜索语言由目标国家 MarketPolicy 决定，互不影响。
+                </p>
                 <label>排除词<input id="strategyExclusions" /></label>
                 <label>排除域名<input id="strategyDomains" /></label>
                 <div class="budget-grid">
@@ -184,11 +209,11 @@
                 </label>
                 <p class="market-policy-meta" id="marketPolicyMeta"></p>
                 <p class="market-policy-hint">
-                  新国家生成的规则先在此审阅批准；批准后主 Agent 才能绑定该市场并继续搜索预览。
+                  新国家生成的规则先在此审阅批准；批准后主 Agent 才能绑定该市场并继续搜索预览。此处语言仅服务该国搜索与客户触达，审查报告语言请在策略模板中设置。
                 </p>
                 <label>Market ID<input id="mpMarketId" readonly /></label>
-                <label>默认触达语言<input id="mpDefaultLanguage" /></label>
-                <label>搜索语言（逗号分隔）<input id="mpLanguages" /></label>
+                <label>默认触达语言（发给客户）<input id="mpDefaultLanguage" /></label>
+                <label>搜索语言（市场区域，逗号分隔）<input id="mpLanguages" /></label>
                 <label>买家角色词（逗号分隔）<input id="mpBuyerRoleTerms" /></label>
                 <label>查询模式（每行一条）<textarea id="mpQueryPatterns"></textarea></label>
                 <label>翻译限制（每行一条）<textarea id="mpTranslationRestrictions"></textarea></label>

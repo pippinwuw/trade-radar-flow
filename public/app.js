@@ -37,6 +37,9 @@ const elements = {
   ),
   orchestratorStatus: document.querySelector("#orchestratorStatus"),
   agentMessages: document.querySelector("#agentMessages"),
+  agentActivity: document.querySelector("#agentActivity"),
+  agentActivityPhase: document.querySelector("#agentActivityPhase"),
+  agentActivityText: document.querySelector("#agentActivityText"),
   agentComposer: document.querySelector("#agentComposer"),
   agentMessageInput: document.querySelector("#agentMessageInput"),
   sendAgentMessageButton: document.querySelector("#sendAgentMessageButton"),
@@ -50,6 +53,7 @@ const elements = {
   strategyAlternatives: document.querySelector("#strategyAlternatives"),
   strategyLocalKeywords: document.querySelector("#strategyLocalKeywords"),
   strategyCities: document.querySelector("#strategyCities"),
+  strategyReportLanguage: document.querySelector("#strategyReportLanguage"),
   strategyExclusions: document.querySelector("#strategyExclusions"),
   strategyDomains: document.querySelector("#strategyDomains"),
   strategyMaxQueries: document.querySelector("#strategyMaxQueries"),
@@ -150,6 +154,7 @@ let orchestratorSession;
 let orchestratorSessions = [];
 let orchestratorMessages = [];
 let orchestratorPollTimer;
+let agentActivityPollTimer;
 let chatRequestPending = false;
 let activeStrategyPanel = "strategy";
 let sessionMarketPolicies = [];
@@ -496,6 +501,14 @@ function renderLeadDetail() {
   const lead = campaign.leads.find((item) => item.id === activeLeadId);
   if (!lead) return;
 
+  const reportLanguage =
+    orchestratorSession?.strategy?.output?.reportLanguage || "Chinese";
+  const marketSearchLanguages = (
+    activeMarketPolicy?.searchLocalization?.languages || []
+  ).join(", ");
+  const outreachLanguage =
+    activeMarketPolicy?.contactAndOutreach?.defaultLanguage || "";
+
   const evidence = lead.research.evidence
     .map(
       (item) =>
@@ -535,6 +548,19 @@ function renderLeadDetail() {
     )
     .join("");
   const countryValidation = lead.candidate.countryValidation;
+  const languageMetaParts = [
+    `审查报告 <strong>${escapeHtml(reportLanguage)}</strong>`,
+  ];
+  if (marketSearchLanguages) {
+    languageMetaParts.push(
+      `市场搜索 <strong>${escapeHtml(marketSearchLanguages)}</strong>`,
+    );
+  }
+  if (outreachLanguage) {
+    languageMetaParts.push(
+      `客户触达 <strong>${escapeHtml(outreachLanguage)}</strong>`,
+    );
+  }
 
   elements.leadDetail.innerHTML = `
     <header class="detail-header">
@@ -542,6 +568,7 @@ function renderLeadDetail() {
         <p class="eyebrow">Agent 公司简报</p>
         <h2>${escapeHtml(lead.research.canonicalName)}</h2>
         <p>${escapeHtml(lead.outreach.headline)}</p>
+        <p class="language-contract-meta">${languageMetaParts.join(" · ")}</p>
       </div>
       <div class="review-actions">
         <button class="button danger" data-review="rejected">驳回</button>
@@ -583,7 +610,7 @@ function renderLeadDetail() {
       </div>
     </div>
     <section class="draft-section">
-      <h3>触达草稿</h3>
+      <h3>触达草稿${outreachLanguage ? `（${escapeHtml(outreachLanguage)}）` : ""}</h3>
       <div class="draft-tabs">
         <button class="tab active" data-draft-tab="email">Email</button>
         <button class="tab" data-draft-tab="whatsapp">WhatsApp</button>
@@ -792,6 +819,58 @@ function renderOrchestratorMessages() {
     .querySelector("#resumeFailedExecutionButton")
     ?.addEventListener("click", resumeFailedExecution);
   elements.agentMessages.scrollTop = elements.agentMessages.scrollHeight;
+}
+
+const agentActivityPhaseLabels = {
+  idle: "空闲",
+  thinking: "思考中",
+  tool: "工具调用",
+  responding: "生成回复",
+};
+
+function renderAgentActivity(activity) {
+  if (!elements.agentActivity) return;
+  const active =
+    chatRequestPending && activity && activity.phase && activity.phase !== "idle";
+  elements.agentActivity.classList.toggle("hidden", !active);
+  if (!active) return;
+  const indicator = elements.agentActivity.querySelector(
+    ".agent-activity-indicator",
+  );
+  if (indicator) indicator.dataset.phase = activity.phase;
+  elements.agentActivityPhase.textContent =
+    agentActivityPhaseLabels[activity.phase] ?? activity.phase;
+  elements.agentActivityText.textContent =
+    activity.detail || agentActivityPhaseLabels[activity.phase] || "处理中";
+}
+
+function stopAgentActivityPolling() {
+  if (agentActivityPollTimer) {
+    clearInterval(agentActivityPollTimer);
+    agentActivityPollTimer = undefined;
+  }
+  renderAgentActivity({ phase: "idle", detail: "主 Agent 空闲" });
+}
+
+function startAgentActivityPolling(sessionId) {
+  stopAgentActivityPolling();
+  renderAgentActivity({
+    phase: "thinking",
+    detail: "主 Agent 正在思考…",
+  });
+  const poll = async () => {
+    if (!chatRequestPending || !sessionId) return;
+    try {
+      const activity = await request(
+        `/api/orchestrator/sessions/${sessionId}/activity`,
+      );
+      if (chatRequestPending) renderAgentActivity(activity);
+    } catch {
+      // Keep the last known activity text if the poll fails mid-turn.
+    }
+  };
+  void poll();
+  agentActivityPollTimer = setInterval(poll, 450);
 }
 
 function switchStrategyPanel(panelId) {
@@ -1238,6 +1317,18 @@ function renderStrategy() {
   elements.strategyLocalKeywords.value =
     strategy.search.localLanguageKeywords.join(", ");
   elements.strategyCities.value = strategy.search.cities.join(", ");
+  const reportLanguage = strategy.output?.reportLanguage || "Chinese";
+  if (
+    ![...elements.strategyReportLanguage.options].some(
+      (option) => option.value === reportLanguage,
+    )
+  ) {
+    const custom = document.createElement("option");
+    custom.value = reportLanguage;
+    custom.textContent = reportLanguage;
+    elements.strategyReportLanguage.append(custom);
+  }
+  elements.strategyReportLanguage.value = reportLanguage;
   elements.strategyExclusions.value = strategy.exclusions.terms.join(", ");
   elements.strategyDomains.value = strategy.exclusions.domains.join(", ");
   elements.strategyMaxQueries.value = strategy.budget.maxQueries;
@@ -1271,16 +1362,15 @@ function renderStrategy() {
     ` 当前已预览 ${strategy.search.queries.length} 条查询。`;
 
   const editable = ["drafting", "awaiting_approval"].includes(session.status);
+  const hasQueryPreview = (session.strategy?.search?.queries?.length ?? 0) > 0;
+  const canApproveStrategy = editable && hasQueryPreview;
   elements.strategyForm
-    .querySelectorAll("input, textarea")
+    .querySelectorAll("input, textarea, select")
     .forEach((input) => {
       input.disabled = !editable;
     });
   elements.saveStrategyButton.classList.toggle("hidden", !editable);
-  elements.approveStrategyButton.classList.toggle(
-    "hidden",
-    session.status !== "awaiting_approval",
-  );
+  elements.approveStrategyButton.classList.toggle("hidden", !canApproveStrategy);
   elements.revokeStrategyApprovalButton.classList.toggle(
     "hidden",
     session.status !== "approved",
@@ -1303,7 +1393,7 @@ function renderOrchestratorReport() {
   elements.orchestratorReport.innerHTML = `
     <div class="section-heading">
       <div>
-        <p class="eyebrow">主 Agent 综合报告</p>
+        <p class="eyebrow">主 Agent 综合报告 · ${escapeHtml(orchestratorSession.strategy?.output?.reportLanguage || "Chinese")}</p>
         <h2>任务结论与下一步</h2>
       </div>
       ${
@@ -1694,6 +1784,7 @@ async function resumePendingChat(event) {
   button.disabled = true;
   button.textContent = "正在恢复…";
   chatRequestPending = true;
+  startAgentActivityPolling(orchestratorSession.id);
   try {
     await request(
       `/api/orchestrator/sessions/${orchestratorSession.id}/messages/resume`,
@@ -1705,6 +1796,7 @@ async function resumePendingChat(event) {
     await loadOrchestratorSession(orchestratorSession.id, { silent: true });
   } finally {
     chatRequestPending = false;
+    stopAgentActivityPolling();
     renderOrchestratorMessages();
   }
 }
@@ -1749,6 +1841,7 @@ async function sendOrchestratorMessage(event) {
     createdAt: new Date().toISOString(),
   });
   renderOrchestratorMessages();
+  startAgentActivityPolling(sessionId);
   try {
     const result = await request(
       `/api/orchestrator/sessions/${orchestratorSession.id}/messages`,
@@ -1781,6 +1874,7 @@ async function sendOrchestratorMessage(event) {
     }
   } finally {
     chatRequestPending = false;
+    stopAgentActivityPolling();
     elements.sendAgentMessageButton.textContent = "发送给主 Agent";
     elements.sendAgentMessageButton.disabled = false;
     renderOrchestratorSessionSelect();
@@ -1803,6 +1897,11 @@ function strategyFromForm() {
     elements.strategyLocalKeywords.value,
   );
   strategy.search.cities = csv(elements.strategyCities.value);
+  strategy.output = {
+    ...(strategy.output || {}),
+    reportLanguage:
+      elements.strategyReportLanguage.value.trim() || "Chinese",
+  };
   strategy.exclusions.terms = csv(elements.strategyExclusions.value);
   strategy.exclusions.domains = csv(elements.strategyDomains.value);
   strategy.budget.maxQueries = Number(elements.strategyMaxQueries.value);

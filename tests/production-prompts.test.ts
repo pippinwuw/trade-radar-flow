@@ -23,6 +23,8 @@ test("搜索与主 Agent 提示词遵守真实业务预算、审批和逐轮边�
   assert.match(ORCHESTRATOR_SYSTEM_PROMPT, /新任务的付费执行只能.*点击执行/);
   assert.match(ORCHESTRATOR_SYSTEM_PROMPT, /resume_failed_execution/);
   assert.match(ORCHESTRATOR_SYSTEM_PROMPT, /发送 Email\/WhatsApp/);
+  assert.match(ORCHESTRATOR_SYSTEM_PROMPT, /审查报告语言（策略 output\.reportLanguage/);
+  assert.match(ORCHESTRATOR_SYSTEM_PROMPT, /不得用其覆盖报告语言/);
   assert.doesNotMatch(ORCHESTRATOR_SYSTEM_PROMPT, /聊天演示模式/);
 });
 

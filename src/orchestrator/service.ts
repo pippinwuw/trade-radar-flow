@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type {
   CampaignInput,
   CampaignStrategy,
+  OrchestratorAgentActivity,
+  OrchestratorAgentActivityPhase,
   OrchestratorMessage,
   OrchestratorSession,
 } from "../domain.js";
@@ -64,6 +66,7 @@ export class OrchestratorService {
   private readonly mainAgent: CampaignOrchestratorAgent;
   private readonly runningJobs = new Set<string>();
   private readonly chattingSessions = new Set<string>();
+  private readonly chatActivity = new Map<string, OrchestratorAgentActivity>();
 
   constructor(
     private readonly database: AppDatabase = getDatabase(),
@@ -267,6 +270,37 @@ export class OrchestratorService {
     return session;
   }
 
+  getChatActivity(sessionId: string): OrchestratorAgentActivity {
+    this.getSession(sessionId);
+    return (
+      this.chatActivity.get(sessionId) ?? {
+        sessionId,
+        phase: "idle",
+        detail: "主 Agent 空闲",
+        updatedAt: now(),
+      }
+    );
+  }
+
+  private setChatActivity(
+    sessionId: string,
+    phase: OrchestratorAgentActivityPhase,
+    detail: string,
+    extra: Pick<OrchestratorAgentActivity, "toolName" | "toolCallId"> = {},
+  ): void {
+    this.chatActivity.set(sessionId, {
+      sessionId,
+      phase,
+      detail,
+      ...extra,
+      updatedAt: now(),
+    });
+  }
+
+  private clearChatActivity(sessionId: string): void {
+    this.chatActivity.delete(sessionId);
+  }
+
   listSessions(): OrchestratorSession[] {
     return this.database.listOrchestratorSessions();
   }
@@ -376,7 +410,8 @@ export class OrchestratorService {
       strategy,
       strategyVersion: current.strategyVersion + 1,
       strategyHash: strategyHash(strategy),
-      status: "drafting",
+      // Keep confirmable after strategy generation / template edits with a query preview.
+      status: strategy.search.queries.length > 0 ? "awaiting_approval" : "drafting",
       runPhase: current.status === "failed" ? undefined : current.runPhase,
       approvedStrategyHash: undefined,
       approvalId: undefined,
@@ -544,46 +579,61 @@ export class OrchestratorService {
     message: OrchestratorMessage;
   }> {
     const initial = this.getSession(sessionId);
-    const turn = await runWithLogContext(
-      { sessionId, campaignId: initial.campaignId },
-      () =>
-        this.mainAgent.chat(content.trim(), history, {
-          getSession: () => this.getSession(sessionId),
-          updateStrategy: (mutate) =>
-            this.updateStrategy(sessionId, mutate),
-          markAwaitingApproval: (message) =>
-            this.markAwaitingApproval(sessionId, message),
-          getCampaign: () => {
-            const session = this.getSession(sessionId);
-            return session.campaignId
-              ? getCampaign(session.campaignId)
-              : undefined;
-          },
-          getCountrySearchHistory: (country) =>
-            this.getCountrySearchHistory(country),
-          setTargetCountry: (country, generatedProfile) =>
-            this.setTargetCountry(sessionId, country, generatedProfile),
-          resumeFailedExecution: () =>
-            this.resumeExecution(sessionId, false),
-        }),
-    );
-    const message = this.addMessage(
-      sessionId,
-      "assistant",
-      turn.content,
-      turn.nextAction,
-    );
-    logger.info(
-      "orchestrator.chat.completed",
-      undefined,
-      {
-        status: this.getSession(sessionId).status,
-        responseCharacters: turn.content.length,
-        nextAction: turn.nextAction,
-      },
-      { sessionId, campaignId: this.getSession(sessionId).campaignId },
-    );
-    return { session: this.getSession(sessionId), message };
+    this.setChatActivity(sessionId, "thinking", "主 Agent 正在思考…");
+    try {
+      const turn = await runWithLogContext(
+        { sessionId, campaignId: initial.campaignId },
+        () =>
+          this.mainAgent.chat(content.trim(), history, {
+            getSession: () => this.getSession(sessionId),
+            updateStrategy: (mutate) =>
+              this.updateStrategy(sessionId, mutate),
+            markAwaitingApproval: (message) =>
+              this.markAwaitingApproval(sessionId, message),
+            getCampaign: () => {
+              const session = this.getSession(sessionId);
+              return session.campaignId
+                ? getCampaign(session.campaignId)
+                : undefined;
+            },
+            getCountrySearchHistory: (country) =>
+              this.getCountrySearchHistory(country),
+            setTargetCountry: (country, generatedProfile) =>
+              this.setTargetCountry(sessionId, country, generatedProfile),
+            resumeFailedExecution: () =>
+              this.resumeExecution(sessionId, false),
+            onActivity: (update) =>
+              this.setChatActivity(
+                sessionId,
+                update.phase,
+                update.detail,
+                {
+                  toolName: update.toolName,
+                  toolCallId: update.toolCallId,
+                },
+              ),
+          }),
+      );
+      const message = this.addMessage(
+        sessionId,
+        "assistant",
+        turn.content,
+        turn.nextAction,
+      );
+      logger.info(
+        "orchestrator.chat.completed",
+        undefined,
+        {
+          status: this.getSession(sessionId).status,
+          responseCharacters: turn.content.length,
+          nextAction: turn.nextAction,
+        },
+        { sessionId, campaignId: this.getSession(sessionId).campaignId },
+      );
+      return { session: this.getSession(sessionId), message };
+    } finally {
+      this.clearChatActivity(sessionId);
+    }
   }
 
   async chat(
@@ -675,16 +725,21 @@ export class OrchestratorService {
 
   approveStrategy(sessionId: string, expectedHash: string): OrchestratorSession {
     const current = this.getSession(sessionId);
-    if (current.status !== "awaiting_approval") {
-      throw new Error("策略尚未进入待确认状态");
+    const canApprove =
+      (current.status === "awaiting_approval" ||
+        current.status === "drafting") &&
+      current.strategy.search.queries.length > 0;
+    if (!canApprove) {
+      throw new Error(
+        current.strategy.search.queries.length
+          ? "当前状态无法确认策略"
+          : "策略尚未进入待确认状态（缺少查询预览）",
+      );
     }
     if (current.strategyHash !== expectedHash) {
       throw new Error("策略已发生变化，请重新检查后确认");
     }
     assertStrategy(current.strategy);
-    if (!current.strategy.search.queries.length) {
-      throw new Error("策略缺少查询预览");
-    }
     const approvedAt = now();
     const updated = this.save({
       ...current,

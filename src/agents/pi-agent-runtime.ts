@@ -852,6 +852,11 @@ export class PiAgentRuntime implements AgentRuntime {
           content: marketPolicyProjection(
             context.marketPolicy,
             "company",
+            {
+              reportLanguage:
+                context.strategy?.output.reportLanguage?.trim() ||
+                "Chinese",
+            },
           ),
           trust: "approved",
           priority: "required",

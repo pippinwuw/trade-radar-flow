@@ -447,6 +447,22 @@ export type OrchestratorRunPhase =
   | "deciding"
   | "summarizing";
 
+export type OrchestratorAgentActivityPhase =
+  | "idle"
+  | "thinking"
+  | "tool"
+  | "responding";
+
+/** Live main-Agent UI status while a chat turn is in flight (in-memory only). */
+export interface OrchestratorAgentActivity {
+  sessionId: string;
+  phase: OrchestratorAgentActivityPhase;
+  detail: string;
+  toolName?: string;
+  toolCallId?: string;
+  updatedAt: string;
+}
+
 export interface StrategyCustomSection {
   id: string;
   title: string;

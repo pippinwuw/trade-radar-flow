@@ -137,6 +137,7 @@ export function compileContext(
 export function marketPolicyProjection(
   policy: MarketPolicy,
   view: "orchestrator" | "search" | "company",
+  options?: { reportLanguage?: string },
 ): string {
   if (policy.status !== "approved") {
     throw new Error(
@@ -154,6 +155,10 @@ export function marketPolicyProjection(
             marketId: policy.marketId,
             companyAnalysis: policy.companyAnalysis,
             contactAndOutreach: policy.contactAndOutreach,
+            // Search/local language stays in MarketPolicy; report language is user-chosen.
+            reportLanguage: options?.reportLanguage?.trim() || "Chinese",
+            languageGuidance:
+              "分析报告中面向人工审查的叙述字段（如 research.summary、qualification.reasons/missingInformation/riskAssessment、outreach.headline/whyContact/productFit/risk/templateReason）必须使用 reportLanguage；搜索与本地化用语遵循本市场规则，不得用其覆盖报告语言。证据原文 quote、专有名词与 schema 枚举保持原样。",
           }
         : {
             marketId: policy.marketId,

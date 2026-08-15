@@ -153,6 +153,10 @@ app.get("/api/orchestrator/sessions/:id", (request, response) => {
   response.json(getOrchestratorService().getSessionView(request.params.id));
 });
 
+app.get("/api/orchestrator/sessions/:id/activity", (request, response) => {
+  response.json(getOrchestratorService().getChatActivity(request.params.id));
+});
+
 app.post("/api/orchestrator/sessions/:id/messages", async (
   request,
   response,

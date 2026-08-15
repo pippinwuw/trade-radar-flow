@@ -111,12 +111,38 @@ test("修改策略会增加版本并使原审批流程失效", async () => {
     },
   });
 
-  assert.equal(updated.status, "drafting");
+  assert.equal(updated.status, "awaiting_approval");
   assert.equal(updated.strategyVersion, planned.session.strategyVersion + 1);
   assert.notEqual(updated.strategyHash, oldHash);
   assert.equal(updated.strategy.budget.maxQueries, 99);
   assert.equal(updated.strategy.budget.maxPagesPerCompany, 99);
   assert.equal(updated.approvalId, undefined);
+});
+
+test("保存模板修改后仍可确认策略", async () => {
+  const active = service();
+  const created = await active.createSession({
+    product: "PVC tarpaulin",
+    country: "Saudi Arabia",
+    language: "English",
+  });
+  const planned = await active.chat(created.session.id, "生成第一版策略");
+  assert.equal(planned.session.status, "awaiting_approval");
+  assert.ok(planned.session.strategy.search.queries.length > 0);
+
+  const saved = active.replaceStrategy(created.session.id, {
+    ...planned.session.strategy,
+    objective: `${planned.session.strategy.objective} · 人工微调`,
+  });
+  assert.equal(saved.status, "awaiting_approval");
+  assert.notEqual(saved.strategyHash, planned.session.strategyHash);
+
+  const approved = active.approveStrategy(
+    created.session.id,
+    saved.strategyHash,
+  );
+  assert.equal(approved.status, "approved");
+  assert.equal(approved.approvedStrategyHash, saved.strategyHash);
 });
 
 test("主 Agent 切换国家时同步 MarketPolicy、清空旧查询并重新送审", async () => {
