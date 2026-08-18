@@ -6,9 +6,7 @@
 
 1. 使用 Node.js 22.19 或更高版本。
 2. 复制 `.env.example` 为 `.env`，不要提交真实密钥。
-3. 先运行 `conda.exe env list`；没有合适环境时，再使用
-   `python/environment.yml` 创建 `trade-radar-flow` 环境。
-4. 执行 `npm install`。
+3. 执行 `npm install`。
 
 ## 修改原则
 
@@ -26,12 +24,6 @@
 npm test
 npm run typecheck
 npm run build
-```
-
-修改 Python crawler 时还需运行：
-
-```cmd
-conda.exe run -n trade-radar-flow python -m unittest tests.test_crawler_worker
 ```
 
 ## Pull Request

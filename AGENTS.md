@@ -2,8 +2,8 @@
 
 ## Scope and purpose
 
-This repository is a Node.js/TypeScript B2B lead-research application with a
-small Python crawling layer. It discovers company websites
+This repository is a Node.js/TypeScript B2B lead-research application. It
+discovers company websites through localized search, crawls public pages,
 through localized search, crawls public pages, runs one evidence-oriented pi
 Agent per company, persists campaigns to SQLite, and leaves outreach approval
 to a human.
@@ -20,8 +20,8 @@ The production flow is:
    execution, checkpoint recovery, and reports.
 3. `src/discovery/` plans and runs Serper queries, deduplicates domains, and
    stops saturated query groups.
-4. `src/crawler/` talks to the Python JSONL worker in
-   `python/crawler_worker.py`; TypeScript remains responsible for orchestration.
+4. `src/crawler/` fetches public HTML in-process (SSRF checks, redirect
+   limits, size caps, and extraction). Orchestration stays in TypeScript.
 5. `src/pipeline.ts` runs an isolated company-analysis Agent for each domain.
 6. `src/storage/database.ts` stores campaigns, leads, caches, Agent traces, and
    orchestrator sessions in SQLite (`data/trade-radar.db` by default).
@@ -45,7 +45,7 @@ and model API calls, including search, embedding, and summarization calls.
 - `src/agents/`: Agent runtimes, demo data, and centralized production prompts.
 - `src/orchestrator/`: main Agent workflow and strategy approval.
 - `src/discovery/`: search planning, Serper integration, and query exclusions.
-- `src/crawler/`: TypeScript crawler boundary and Python worker client.
+- `src/crawler/`: in-process public-site crawler, SSRF defenses, and cache.
 - `src/validation/`: deterministic validation of analysis results and contacts.
 - `src/market/`: CountryProfile registry, runtime market bootstrap, and
   MarketPolicy loading, hashing, migration, draft/review/approval lifecycle.
@@ -55,20 +55,14 @@ and model API calls, including search, embedding, and summarization calls.
 - `src/lib/`: shared concurrency helpers and numeric limits.
 - `market-policies/`: committed CountryProfile and MarketPolicy JSON plus JSON
   Schema. This is the source of truth for built-in market customization.
-- `python/`: crawler worker and its environment definition.
 - `public/`: browser UI.
-- `tests/`: Node `node:test` tests and Python `unittest` coverage.
+- `tests/`: Node `node:test` tests.
 - `scripts/`: reusable maintenance and reporting utilities.
 - `data/`, `logs/`, `output/`, `workspace/`, `dist/`: generated/local artifacts.
 
 ## Environment and commands
 
 - Use `cmd` as the first-choice interactive terminal on Windows.
-- Before running Python or dependency commands, inspect available environments
-  with `conda.exe env list`.
-- Prefer the `trade-radar-flow` environment defined in
-  `python/environment.yml`; create it only when no suitable environment exists.
-- Do not rely on `conda activate` in automated commands.
 - Node.js must be at least `22.19.0`; npm must be at least `10`.
 - Copy `.env.example` to `.env` for local live runs. Never commit `.env` or
   real credentials.
@@ -86,13 +80,6 @@ npm run typecheck
 npm run build
 npm start
 npm run logs:report
-```
-
-Python crawler test:
-
-```cmd
-conda.exe env list
-conda.exe run -n trade-radar-flow python -m unittest tests.test_crawler_worker
 ```
 
 There is currently no ESLint, Prettier, Ruff, or dedicated lint command.
@@ -159,15 +146,12 @@ There is currently no ESLint, Prettier, Ruff, or dedicated lint command.
   `src/analysis/context-manager.ts`. Required system rules, approved strategy,
   and referenced evidence must not be silently truncated.
 
-### Python
+### Crawler
 
-- Use `from __future__ import annotations`, type hints, `snake_case`, and
-  module-level uppercase constants.
-- Keep command-line entry points based on `argparse`.
-- Keep `python/crawler_worker.py` focused on safe fetching and extraction;
-  orchestration and business decisions belong in TypeScript.
-- Preserve crawler SSRF defenses, redirect checks, response-size limits, and
-  JSONL protocol compatibility.
+- Keep fetching and extraction in `src/crawler/`. Orchestration and business
+  decisions stay outside it.
+- Preserve SSRF defenses, redirect checks, response-size limits, and
+  same-host page discovery. Do not reintroduce a Python worker.
 
 ### Tests
 
@@ -188,9 +172,8 @@ npm run typecheck
 ```
 
 Also run `npm run build` when changing imports, entry points, server behavior,
-or release paths. Run the Python unittest when changing crawler extraction or
-the TypeScript/Python protocol. Live UI or provider checks are additional
-manual validation and must not replace deterministic tests.
+or release paths. Live UI or provider checks are additional manual validation
+and must not replace deterministic tests.
 
 After substantive edits, inspect diagnostics for edited files. Do not fix
 unrelated pre-existing issues without explicit scope.
@@ -203,7 +186,7 @@ Never commit:
 - SQLite databases under `data/`.
 - Runtime MarketPolicy drafts, approved local versions, and generated profiles
   under `data/market-policies/`.
-- logs, generated reports, `dist/`, Python caches, or dependency directories.
+- logs, generated reports, `dist/`, or dependency directories.
 - exported XLS/JSON/CSV files under `output/` or analysis files under
   `workspace/`.
 - real campaign IDs, customer names, contact details, location overrides, or

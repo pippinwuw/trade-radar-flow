@@ -3,6 +3,10 @@ import type {
   CampaignAgentContext,
 } from "../agents/agent-runtime.js";
 import { crawlCandidate } from "../crawler/index.js";
+import {
+  crawlerRetryCount,
+  crawlerWorkerCount,
+} from "../crawler/limits.js";
 import type {
   CampaignInput,
   CompanyCandidate,
@@ -29,7 +33,6 @@ import { logger } from "../logging/logger.js";
 import {
   isTransientError,
   mapWithConcurrency,
-  positiveIntegerFromEnv,
   withRetry,
 } from "../lib/concurrency.js";
 import {
@@ -345,15 +348,8 @@ export async function executeDiscoveryRound({
   }));
   await emitProgress();
 
-  const crawlConcurrency = positiveIntegerFromEnv(
-    "PYTHON_CRAWLER_WORKERS",
-    5,
-  );
-  const configuredCrawlRetries = Number(process.env.PYTHON_CRAWLER_RETRIES);
-  const crawlRetries =
-    Number.isFinite(configuredCrawlRetries) && configuredCrawlRetries >= 0
-      ? Math.floor(configuredCrawlRetries)
-      : 2;
+  const crawlConcurrency = crawlerWorkerCount();
+  const crawlRetries = crawlerRetryCount();
   const errors: DiscoveryRun["errors"] = [];
   const companyByDomain = new Map(
     companies.map((company) => [company.domain, company]),
@@ -549,15 +545,8 @@ export async function discoverCompanies(
     ? Math.max(1, Math.floor(requestedQueries))
     : DEFAULT_SEARCH_QUERIES;
   const resultsPerQuery = MAX_RESULTS_PER_QUERY;
-  const crawlConcurrency = positiveIntegerFromEnv(
-    "PYTHON_CRAWLER_WORKERS",
-    5,
-  );
-  const configuredCrawlRetries = Number(process.env.PYTHON_CRAWLER_RETRIES);
-  const crawlRetries =
-    Number.isFinite(configuredCrawlRetries) && configuredCrawlRetries >= 0
-      ? Math.floor(configuredCrawlRetries)
-      : 2;
+  const crawlConcurrency = crawlerWorkerCount();
+  const crawlRetries = crawlerRetryCount();
   logger.info("discovery.run.started", undefined, {
     product: input.product,
     country: input.country,

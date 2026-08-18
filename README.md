@@ -11,7 +11,7 @@
 - 主 Agent 协助制定目标客户、搜索矩阵、排除条件、验证门槛和预算。
 - 策略版本化并使用 hash 审批，修改后必须重新确认。
 - Serper 本地化搜索、Campaign 内域名去重、查询组低产出停止。
-- Python 安全爬虫递归读取官网业务页面，提取正文和公开联系人候选。
+- Node 安全爬虫递归读取官网业务页面，提取正文和公开联系人候选。
 - 每家公司使用独立 CompanyAnalysisAgent，不跨公司共享网页或模型上下文。
 - 证据通过 `sourceRef` 引用，由服务端恢复逐字 quote 和来源 URL。
 - SQLite 增量保存 Campaign，可在服务或供应商故障后从检查点恢复。
@@ -31,14 +31,13 @@ src/server.ts
    ├── src/discovery/          查询规划、Serper、去重与停止条件
    ├── src/pipeline.ts         抓取、公司分析、检查点
    ├── src/agents/             Agent runtime、demo 与生产 prompts
-   ├── src/crawler/            Python 爬虫 JSONL 客户端与缓存边界
+   ├── src/crawler/            官网抓取、SSRF 防护与缓存
    ├── src/market/             CountryProfile 与 MarketPolicy
    ├── src/analysis/           公司证据包与上下文编译
    ├── src/validation/         国家、联系人和证据校验
    ├── src/storage/            SQLite 持久化与缓存
    ├── src/export/             JSON/XLSX 通用导出
-   ├── market-policies/        内置外部 MarketPolicy JSON
-   └── python/crawler_worker.py
+   └── market-policies/        内置外部 MarketPolicy JSON
 ```
 
 内置 MarketPolicy：
@@ -55,8 +54,6 @@ src/server.ts
 
 - Node.js `>= 22.19.0`
 - npm `>= 10`
-- Python `3.12`
-- Conda（推荐）或可安装 requirements 的 Python 环境
 
 ## 安装
 
@@ -67,8 +64,6 @@ git clone https://github.com/pippinwuw/trade-radar-flow.git
 cd trade-radar-flow
 npm install
 copy .env.example .env
-conda.exe env list
-conda.exe env create -f python\environment.yml
 ```
 
 Linux/macOS：
@@ -78,13 +73,6 @@ git clone https://github.com/pippinwuw/trade-radar-flow.git
 cd trade-radar-flow
 npm install
 cp .env.example .env
-conda env create -f python/environment.yml
-```
-
-如果已有合适的 Python 环境，也可以执行：
-
-```bash
-python -m pip install -r python/requirements.txt
 ```
 
 ## 配置
@@ -97,7 +85,6 @@ PI_PROVIDER=anthropic
 PI_MODEL=claude-sonnet-4-5
 ANTHROPIC_API_KEY=
 SERPER_API_KEY=
-PYTHON_CRAWLER_ENV=trade-radar-flow
 ```
 
 也可将 `PI_AGENT_MODE=demo` 用于全局离线验证。UI 中“运行离线验证样例”始终使用
@@ -178,13 +165,6 @@ npm run logs:report -- --date=2026-07-18
 npm test
 npm run typecheck
 npm run build
-```
-
-Python crawler：
-
-```cmd
-conda.exe env list
-conda.exe run -n trade-radar-flow python -m unittest tests.test_crawler_worker
 ```
 
 ## 安全边界

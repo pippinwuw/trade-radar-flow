@@ -1,21 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { getDomain } from "tldts";
 import type { CompanyCandidate, SearchHit } from "../domain.js";
-import {
-  getPythonCrawler,
-  type CrawlerOptions,
-} from "./python-client.js";
+import { getCrawler, type CrawlerOptions } from "./crawl.js";
 import { logger } from "../logging/logger.js";
 import { getDatabase } from "../storage/database.js";
 
-export type { CrawlerOptions } from "./python-client.js";
+export type { CrawlerOptions } from "./crawl.js";
 
 const inFlightCrawls = new Map<string, Promise<CompanyCandidate>>();
 
-/**
- * Public crawler boundary. Website fetching and extraction run in the dedicated
- * Python JSONL worker; TypeScript owns orchestration, validation and Agent work.
- */
 function regexCleaningEnabled(options?: CrawlerOptions): boolean {
   if (options?.enableRegexCleaning !== undefined) {
     return options.enableRegexCleaning;
@@ -36,10 +29,10 @@ export function crawlerCacheKey(
 ): string | undefined {
   try {
     const url = new URL(input);
-    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    const hostname = url.hostname.toLowerCase().replace(/^www\./u, "");
     const domain = getDomain(hostname) ?? hostname;
     const configuration = JSON.stringify({
-      version: 3,
+      version: 4,
       domain,
       maxPages: positiveInteger(options?.maxPages, 20),
       regexCleaning: regexCleaningEnabled(options),
@@ -102,7 +95,7 @@ export async function crawlCandidate(
       };
     }
   }
-  const crawlPromise = getPythonCrawler().crawl(
+  const crawlPromise = getCrawler().crawl(
     input,
     searchHit,
     normalizedOptions,
