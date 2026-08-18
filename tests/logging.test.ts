@@ -54,7 +54,7 @@ test("日志报告汇总 HTTP、Agent、搜索、爬虫和 Campaign 指标", () 
     {
       ...base,
       timestamp: "2026-07-18T10:00:03.000Z",
-      event: "crawler.python.completed",
+      event: "crawler.completed",
       data: {
         durationMs: 50,
         pageCount: 2,

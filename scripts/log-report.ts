@@ -106,7 +106,7 @@ export function summarizeRecords(
     ...event("agent.run.failed"),
     ...event("orchestrator.agent.failed"),
   ];
-  const crawlerCompleted = event("crawler.python.completed");
+  const crawlerCompleted = event("crawler.completed");
   const campaignCompleted = event("pipeline.campaign.completed");
 
   return {
@@ -173,8 +173,7 @@ export function summarizeRecords(
     crawler: {
       completed: crawlerCompleted.length,
       failed:
-        event("crawler.python.failed").length +
-        event("crawler.python.timeout").length,
+        event("crawler.page_skipped").length,
       cacheHits:
         event("crawler.cache_hit").length +
         event("crawler.inflight_reused").length,

@@ -12,6 +12,7 @@ import {
   serializeCampaignJson,
 } from "./export/campaign-export.js";
 import { crawlCandidate } from "./crawler/index.js";
+import { crawlerWorkerCount } from "./crawler/limits.js";
 import { listCountryProfiles } from "./market/registry.js";
 import type {
   CampaignInput,
@@ -545,8 +546,7 @@ app.listen(port, "127.0.0.1", () => {
       searchConfigured: Boolean(
         process.env.SERPER_API_KEY ?? process.env.SERPAPI_API_KEY,
       ),
-      pythonCrawlerEnvironment:
-        process.env.PYTHON_CRAWLER_ENV ?? "trade-radar-flow",
+      crawlerWorkers: crawlerWorkerCount(),
       nodeVersion: process.version,
     },
   );
