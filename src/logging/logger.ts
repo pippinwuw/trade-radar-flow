@@ -10,6 +10,7 @@ export interface LogContext {
   campaignId?: string;
   leadId?: string;
   agent?: string;
+  quietHttp?: boolean;
   [key: string]: unknown;
 }
 
@@ -140,7 +141,8 @@ function write(
     ...(contextStorage.getStore() ?? {}),
     ...(extraContext ?? {}),
   };
-  const safeContext = sanitizeLogValue(context) as LogContext;
+  const { quietHttp: _quietHttp, ...publicContext } = context;
+  const safeContext = sanitizeLogValue(publicContext) as LogContext;
   const record: LogRecord = {
     timestamp,
     level,

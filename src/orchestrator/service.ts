@@ -38,7 +38,7 @@ import {
   type CountrySearchHistory,
 } from "./main-agent.js";
 import { createDeterministicReport } from "./report-view.js";
-import { logger, runWithLogContext } from "../logging/logger.js";
+import { getLogContext, logger, runWithLogContext } from "../logging/logger.js";
 import {
   assertStrategy,
   clampStrategy,
@@ -378,17 +378,19 @@ export class OrchestratorService {
   } {
     const session = this.getSession(id);
     const messages = this.database.listOrchestratorMessages(id);
-    logger.info(
-      "orchestrator.session.loaded",
-      undefined,
-      {
-        status: session.status,
-        messageCount: messages.length,
-        strategyVersion: session.strategyVersion,
-        hasCampaign: Boolean(session.campaignId),
-      },
-      { sessionId: id, campaignId: session.campaignId },
-    );
+    if (!getLogContext().quietHttp) {
+      logger.info(
+        "orchestrator.session.loaded",
+        undefined,
+        {
+          status: session.status,
+          messageCount: messages.length,
+          strategyVersion: session.strategyVersion,
+          hasCampaign: Boolean(session.campaignId),
+        },
+        { sessionId: id, campaignId: session.campaignId },
+      );
+    }
     return { session, messages };
   }
 

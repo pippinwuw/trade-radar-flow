@@ -22,6 +22,10 @@ import type {
 } from "./domain.js";
 import { saveMarketPolicyDraft } from "./market/policy.js";
 import { getOrchestratorService } from "./orchestrator/service.js";
+import {
+  isStatusPollHttpRequest,
+  shouldLogHttpRequest,
+} from "./logging/http-request-log.js";
 import { logger, runWithLogContext } from "./logging/logger.js";
 import { OperationTimeoutError } from "./lib/concurrency.js";
 import {
@@ -45,8 +49,13 @@ app.use((request, response, next) => {
       : undefined) ?? randomUUID();
   response.setHeader("x-request-id", requestId);
   const started = performance.now();
-  runWithLogContext({ requestId }, () => {
-    if (request.path.startsWith("/api/")) {
+  const quietHttp = isStatusPollHttpRequest(
+    request.method,
+    request.path,
+    request.headers,
+  );
+  runWithLogContext({ requestId, quietHttp: quietHttp || undefined }, () => {
+    if (shouldLogHttpRequest(request.method, request.path, request.headers)) {
       logger.info("http.request.started", undefined, {
         method: request.method,
         path: request.path,
@@ -55,14 +64,23 @@ app.use((request, response, next) => {
       });
     }
     response.on("finish", () => {
-      if (request.path.startsWith("/api/")) {
-        logger.info("http.request.completed", undefined, {
-          method: request.method,
-          path: request.path,
-          statusCode: response.statusCode,
-          durationMs: Math.round(performance.now() - started),
-        });
+      if (
+        !shouldLogHttpRequest(
+          request.method,
+          request.path,
+          request.headers,
+          response.statusCode,
+        )
+      ) {
+        return;
       }
+      const failed = response.statusCode >= 400;
+      logger[failed ? "warn" : "info"]("http.request.completed", undefined, {
+        method: request.method,
+        path: request.path,
+        statusCode: response.statusCode,
+        durationMs: Math.round(performance.now() - started),
+      });
     });
     next();
   });

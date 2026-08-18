@@ -155,6 +155,7 @@ let orchestratorSessions = [];
 let orchestratorMessages = [];
 let orchestratorPollTimer;
 let agentActivityPollTimer;
+let statusPollRequestDepth = 0;
 let chatRequestPending = false;
 let activeStrategyPanel = "strategy";
 let sessionMarketPolicies = [];
@@ -240,9 +241,16 @@ function safeUrl(value) {
 
 async function request(url, options = {}) {
   const started = performance.now();
+  const headers = {
+    "content-type": "application/json",
+    ...(options.headers ?? {}),
+  };
+  if (statusPollRequestDepth > 0) {
+    headers["x-trade-radar-poll"] = "1";
+  }
   const response = await fetch(url, {
-    headers: { "content-type": "application/json" },
     ...options,
+    headers,
   });
   const raw = await response.text();
   let result;
@@ -271,6 +279,15 @@ async function request(url, options = {}) {
     throw new Error(result.error ?? `请求失败：HTTP ${response.status}`);
   }
   return result;
+}
+
+async function withStatusPoll(task) {
+  statusPollRequestDepth += 1;
+  try {
+    return await task();
+  } finally {
+    statusPollRequestDepth -= 1;
+  }
 }
 
 function isFetchFailure(error) {
@@ -861,8 +878,8 @@ function startAgentActivityPolling(sessionId) {
   const poll = async () => {
     if (!chatRequestPending || !sessionId) return;
     try {
-      const activity = await request(
-        `/api/orchestrator/sessions/${sessionId}/activity`,
+      const activity = await withStatusPoll(() =>
+        request(`/api/orchestrator/sessions/${sessionId}/activity`),
       );
       if (chatRequestPending) renderAgentActivity(activity);
     } catch {
@@ -1665,7 +1682,7 @@ function renderExecutionProgress() {
   elements.orchestratorRoundProgress.innerHTML = roundProgressHtml(campaign);
 }
 
-function renderOrchestrator() {
+function renderOrchestrator(options = {}) {
   if (!orchestratorSession) return;
   cacheOrchestratorSession(orchestratorSession);
   elements.orchestratorStatus.textContent = orchestratorStatusLabel(
@@ -1678,7 +1695,9 @@ function renderOrchestrator() {
   renderExecutionProgress();
   renderOrchestratorMessages();
   renderStrategy();
-  void refreshSessionMarketPolicy({ keepSelection: true });
+  if (!options.skipMarketPolicy) {
+    void refreshSessionMarketPolicy({ keepSelection: true });
+  }
   renderOrchestratorReport();
 }
 
@@ -1991,37 +2010,39 @@ async function executeOrchestratorStrategy() {
 
 function startOrchestratorPolling() {
   clearInterval(orchestratorPollTimer);
-  orchestratorPollTimer = setInterval(async () => {
-    if (!orchestratorSession) return;
-    try {
-      const result = await request(
-        `/api/orchestrator/sessions/${orchestratorSession.id}`,
-      );
-      orchestratorSession = result.session;
-      orchestratorMessages = result.messages;
-      if (orchestratorSession.campaignId) {
-        try {
-          campaign = await request(
-            `/api/campaigns/${orchestratorSession.campaignId}`,
-          );
-        } catch {
-          campaign = undefined;
-        }
-      }
-      renderOrchestrator();
-      if (orchestratorSession.status !== "running") {
-        clearInterval(orchestratorPollTimer);
+  orchestratorPollTimer = setInterval(() => {
+    void withStatusPoll(async () => {
+      if (!orchestratorSession) return;
+      try {
+        const result = await request(
+          `/api/orchestrator/sessions/${orchestratorSession.id}`,
+        );
+        orchestratorSession = result.session;
+        orchestratorMessages = result.messages;
         if (orchestratorSession.campaignId) {
-          campaign = await request(
-            `/api/campaigns/${orchestratorSession.campaignId}`,
-          );
-          activeLeadId = campaign.leads[0]?.id;
-          renderCampaign();
+          try {
+            campaign = await request(
+              `/api/campaigns/${orchestratorSession.campaignId}`,
+            );
+          } catch {
+            campaign = undefined;
+          }
         }
+        renderOrchestrator({ skipMarketPolicy: true });
+        if (orchestratorSession.status !== "running") {
+          clearInterval(orchestratorPollTimer);
+          if (orchestratorSession.campaignId) {
+            campaign = await request(
+              `/api/campaigns/${orchestratorSession.campaignId}`,
+            );
+            activeLeadId = campaign.leads[0]?.id;
+            renderCampaign();
+          }
+        }
+      } catch {
+        clearInterval(orchestratorPollTimer);
       }
-    } catch {
-      clearInterval(orchestratorPollTimer);
-    }
+    });
   }, 800);
 }
 
